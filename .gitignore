@@ -1,0 +1,8 @@
+# Ignore secrets and virtual environments
+config.json
+*.csv
+!reports/*.html
+log.txt
+data/
+.venv/
+__pycache__/
