@@ -67,3 +67,78 @@ def analyze_stocks():
         })
         time.sleep(0.5)
     return pd.DataFrame(results)
+
+def fetch_live_prices(symbols=NIFTY_50_SYMBOLS):
+    """
+    Fetches the latest available price (Close of the last minute candle) for the given symbols.
+    Returns a Series: {Symbol: Price}
+    """
+    try:
+        # Fetch 1-minute data 
+        # LIVE MARKET: '1d' is best.
+        # AFTER MARKET (TESTING): '1d' sometimes returns empty if market is closed long ago? 
+        # We will try '1d' first, if empty, try '5d' to ensure we get *some* data for testing.
+        
+        ticker_str = " ".join(symbols)
+        
+        def get_data(period):
+            return yf.download(
+                tickers=ticker_str,
+                period=period,
+                interval="1m",
+                group_by='ticker',
+                progress=False,
+                threads=True,
+                timeout=10,
+                auto_adjust=False
+            )
+
+        data = get_data("1d")
+        
+        if data.empty:
+             # Fallback for testing after hours if 1d fails
+            data = get_data("5d")
+
+        latest_prices = {}
+        
+        if data.empty:
+            return pd.Series()
+
+        # Handle single ticker case vs multi-ticker case
+        if len(symbols) == 1:
+            symbol = symbols[0]
+            if not data.empty:
+                # Get the last valid close price
+                val = data["Close"].iloc[-1].item()
+                latest_prices[symbol] = val
+        else:
+            # Multi-ticker
+            
+            # Check if flat columns (only 1 ticker valid despite asking for many)
+            # If flat, columns would be [Open, High, ...] without Ticker level
+            is_flat = not isinstance(data.columns, pd.MultiIndex)
+            
+            if is_flat and len(symbols) > 1:
+                if 'Close' in data.columns:
+                     pass
+            
+            for symbol in symbols:
+                try:
+                    # Case 1: Standard MultiIndex (Ticker, OHLC) due to group_by='ticker'
+                    if (isinstance(data.columns, pd.MultiIndex) and symbol in data.columns.levels[0]):
+                        symbol_data = data[symbol]
+                        if not symbol_data.empty:
+                            valid_closes = symbol_data["Close"].dropna()
+                            if not valid_closes.empty:
+                                latest_prices[symbol] = valid_closes.iloc[-1].item()
+                    # Case 2: Standard flat
+                    elif symbol in data.columns:
+                         val = data[symbol].dropna().iloc[-1]
+                         latest_prices[symbol] = val
+                except Exception:
+                    continue
+        
+        return pd.Series(latest_prices)
+    except Exception as e:
+        print(f"Error fetching live prices: {e}")
+        return pd.Series()
