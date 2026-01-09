@@ -1,192 +1,191 @@
 import streamlit as st
 import pandas as pd
 import os
-import subprocess
 import time
 from datetime import datetime
 import pytz
-from utils.stock_utils import fetch_live_prices, NIFTY_50_SYMBOLS, send_email
+from utils.stock_utils import fetch_live_prices, NIFTY_50_SYMBOLS, fetch_stock_data
+from utils.ai_agent import get_ai_forecast
+import yfinance as yf
 
 st.set_page_config(page_title="📈 Nifty 50 Screener", layout="wide")
 st.title("📊 Nifty 50 Gap Breakout & Live Tracker")
 
+# Ensure data directory exists
+if not os.path.exists("data"):
+    os.makedirs("data")
+
 # Tabs for different modes
-# Removed Tab 2 as per cleanup
-st.markdown("### 🔴 Live 9:15-9:25 Tracker")
+tab1, tab2, tab3 = st.tabs(["🔴 Live Tracker", "🤖 forecast_nifty", "₿ forcast_crypto"])
 
-st.markdown("### ⏱️ Live Market Trend (30s Updates)")
-st.info("Tracks real-time Nifty 50 trends. Stocks that cross their Open price (whipsaw) are removed to ensure only strong trends are shown.")
+with tab1:
+    st.markdown("### ⏱️ Live Market Trend (30s Updates)")
+    st.info("Tracks real-time Nifty 50 trends. Stocks that cross their Open price (whipsaw) are removed.")
 
-# Session State Initialization
-if "tracking" not in st.session_state:
-    st.session_state.tracking = False
-if "data_history" not in st.session_state:
-    st.session_state.data_history = pd.DataFrame(columns=["Symbol", "Open"])
-if "blacklist" not in st.session_state:
-    st.session_state.blacklist = set()
-if "open_prices" not in st.session_state:
-    st.session_state.open_prices = {}
-if "valid_status" not in st.session_state:
-    st.session_state.valid_status = {}
+    # Link to latest report
+    data_files = sorted([f for f in os.listdir("data") if f.endswith(".csv")], reverse=True)
+    if data_files:
+        if st.button("📊 View Latest 9:25 AM Report"):
+            latest_file = data_files[0]
+            df_latest = pd.read_csv(os.path.join("data", latest_file))
+            st.markdown(f"#### 📅 Report: {latest_file.split('_')[1].replace('.csv', '')}")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.subheader("🚀 Strong Stocks")
+                st.dataframe(df_latest[df_latest["Status"] == "High"], use_container_width=True)
+            with col_b:
+                st.subheader("📉 Weak Stocks")
+                st.dataframe(df_latest[df_latest["Status"] == "Low"], use_container_width=True)
+            st.divider()
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    start_btn = st.button("▶️ Start Tracking")
-with col2:
-    stop_btn = st.button("⏹️ Stop")
+    # Session State Initialization
+    if "tracking" not in st.session_state:
+        st.session_state.tracking = False
+    if "saved_today" not in st.session_state:
+        st.session_state.saved_today = False
+    if "blacklist" not in st.session_state:
+        st.session_state.blacklist = set()
+    if "open_prices" not in st.session_state:
+        st.session_state.open_prices = {}
+    if "valid_status" not in st.session_state:
+        st.session_state.valid_status = {}
 
-if start_btn:
-    st.session_state.tracking = True
-    st.session_state.blacklist = set() # Reset blacklist on new run
-    st.session_state.valid_status = {} # Reset valid status
-    st.session_state.data_history = pd.DataFrame(columns=["Symbol", "Open"]) # Reset history
-    with st.spinner("Fetching Open Prices..."):
-        # Initial Fetch for Open Prices
-        prices = fetch_live_prices(NIFTY_50_SYMBOLS)
-        st.session_state.open_prices = prices.to_dict()
-        
-        # Initialize history
-        initial_data = []
-        for sym, price in st.session_state.open_prices.items():
-            initial_data.append({"Symbol": sym, "Open": price})
-        st.session_state.data_history = pd.DataFrame(initial_data)
-        
-        if prices.empty:
-            st.error("⚠️ Failed to fetch Open prices. Check connection/market status.")
-        else:
-            st.success(f"✅ Initialized Tracking for {len(prices)} stocks.")
+    col_btn1, col_btn2 = st.columns([1, 4])
+    with col_btn1:
+        start_tracking = st.button("▶️ Start Tracking")
+    with col_btn2:
+        stop_tracking = st.button("⏹️ Stop")
 
-if stop_btn:
-    st.session_state.tracking = False
-    st.success("Stopped Tracking.")
+    if start_tracking:
+        st.session_state.tracking = True
+        st.session_state.blacklist = set() 
+        st.session_state.valid_status = {} 
+        st.session_state.saved_today = False 
+        with st.spinner("Fetching Open Prices..."):
+            prices = fetch_live_prices(NIFTY_50_SYMBOLS)
+            st.session_state.open_prices = prices.to_dict()
+            if prices.empty:
+                st.error("⚠️ Failed to fetch Open prices.")
+            else:
+                st.success(f"✅ Initialized Tracking for {len(prices)} stocks.")
 
-# Live Loop
-placeholder_high = st.empty()
-placeholder_low = st.empty()
-status_text = st.empty()
+    if stop_tracking:
+        st.session_state.tracking = False
 
-if st.session_state.tracking:
-    while True:
-        now = datetime.now(pytz.timezone("Asia/Kolkata"))
-        current_time = now.strftime("%H:%M:%S")
-        
-        # 1. Fetch Current Prices
-        live_prices = fetch_live_prices(NIFTY_50_SYMBOLS)
-        
-        # Update status TEXT after fetching so 'live_prices' is defined
-        status_text.text(f"Last Update: {current_time} | Tracking Active (Updated: {len(live_prices)}/{len(st.session_state.open_prices)})")
+    # UI Placeholders
+    placeholder_high = st.empty()
+    placeholder_low = st.empty()
+    status_text = st.empty()
 
-        # 2. Update History & Check Whipsaws
-        if not live_prices.empty:
-            # Add new column for this timestamp
-            col_name = f"{current_time}"
+    if st.session_state.tracking:
+        while True:
+            now = datetime.now(pytz.timezone("Asia/Kolkata"))
+            current_time = now.strftime("%H:%M:%S")
             
-            strong_stocks = []
-            weak_stocks = []
+            live_prices = fetch_live_prices(NIFTY_50_SYMBOLS)
+            status_text.text(f"Last Update: {current_time} | Tracking Active ({len(live_prices)} stocks)")
 
-            for sym, current_price in live_prices.items():
-                if sym not in st.session_state.open_prices:
-                    continue
-                    
-                open_price = st.session_state.open_prices[sym]
-                
-                if sym not in st.session_state.valid_status:
-                    # Initialize status on first significant move
-                    if current_price > open_price:
-                        st.session_state.valid_status[sym] = "High"
-                    elif current_price < open_price:
-                        st.session_state.valid_status[sym] = "Low"
-                    else:
-                        continue # Equal to open, wait for direction
+            if not live_prices.empty:
+                strong_stocks = []
+                weak_stocks = []
 
-                status = st.session_state.valid_status[sym]
-
-                # If already marked choppy, skip
-                if status == "Choppy":
-                    continue
-
-                # Check for Whipsaw (Crossing the Open Price)
-                if status == "High" and current_price < open_price:
-                    st.session_state.valid_status[sym] = "Choppy" # Mark as choppy forever
-                    continue
-                elif status == "Low" and current_price > open_price:
-                    st.session_state.valid_status[sym] = "Choppy" # Mark as choppy forever
-                    continue
-                
-                # Valid Status - Add to lists
-                if status == "High":
-                    strong_stocks.append({
-                        "Symbol": sym, 
-                        "Open": open_price, 
-                        "Current": current_price, 
-                        "Change %": round((current_price - open_price) / open_price * 100, 2)
-                    })
-                elif status == "Low":
-                    weak_stocks.append({
-                        "Symbol": sym, 
-                        "Open": open_price, 
-                        "Current": current_price, 
-                        "Change %": round((open_price - current_price) / open_price * 100, 2)
-                    }) 
-
-            # DataFrame Construction
-            df_strong = pd.DataFrame(strong_stocks)
-            df_weak = pd.DataFrame(weak_stocks)
-            
-            with placeholder_high.container():
-                st.write("### 🚀 Strong Stocks (Above Open)")
-                if not df_strong.empty:
-                    st.dataframe(df_strong.sort_values("Change %", ascending=False), height=300)
-                else:
-                    st.write("No stocks strictly above open.")
-
-            with placeholder_low.container():
-                st.write("### 📉 Weak Stocks (Below Open)")
-                if not df_weak.empty:
-                    st.dataframe(df_weak.sort_values("Change %", ascending=False), height=300)
-                else:
-                    st.write("No stocks strictly below open.")
-
-# --- Reports Removed (Cleanup) ---
-
-            # Stop Condition & Email Trigger
-            if now.hour == 9 and now.minute >= 25:
-                st.session_state.tracking = False
-                status_text.text("Market Open Tracking Ended (9:25 AM). Sending Email...")
-                
-                # Prepare final dataframes for email
-                # We need to rebuild them one last time or use the displayed ones
-                # Ideally, we should accumulate strong/weak stocks in session state or just re-calculate from current state
-                
-                final_strong = []
-                final_weak = []
-                
-                # Re-evaluate all stocks one last time for the report
-                if st.session_state.open_prices:
-                    prices = fetch_live_prices(NIFTY_50_SYMBOLS)
-                    for sym, current in prices.items():
-                        if sym not in st.session_state.open_prices: continue
+                for sym, current_price in live_prices.items():
+                    if sym not in st.session_state.open_prices:
+                        continue
                         
-                        open_p = st.session_state.open_prices[sym]
-                        if sym in st.session_state.valid_status:
-                            status = st.session_state.valid_status[sym]
-                            if status == "High" and current > open_p:
-                                final_strong.append({
-                                    "Symbol": sym, "Open": open_p, "Current": current,
-                                    "Change %": round((current - open_p) / open_p * 100, 2)
-                                })
-                            elif status == "Low" and current < open_p:
-                                final_weak.append({
-                                    "Symbol": sym, "Open": open_p, "Current": current,
-                                    "Change %": round((open_p - current) / open_p * 100, 2)
-                                })
+                    open_price = st.session_state.open_prices[sym]
+                    
+                    if sym not in st.session_state.valid_status:
+                        if current_price > open_price:
+                            st.session_state.valid_status[sym] = "High"
+                        elif current_price < open_price:
+                            st.session_state.valid_status[sym] = "Low"
+                        else:
+                            continue
 
-                df_s_final = pd.DataFrame(final_strong)
-                df_w_final = pd.DataFrame(final_weak)
+                    status = st.session_state.valid_status[sym]
+                    if status == "Choppy":
+                        continue
+
+                    if (status == "High" and current_price < open_price) or \
+                       (status == "Low" and current_price > open_price):
+                        st.session_state.valid_status[sym] = "Choppy"
+                        continue
+                    
+                    if status == "High":
+                        strong_stocks.append({
+                            "Symbol": sym, "Open": open_price, "Current": current_price, 
+                            "Change %": round((current_price - open_price) / open_price * 100, 2)
+                        })
+                    elif status == "Low":
+                        weak_stocks.append({
+                            "Symbol": sym, "Open": open_price, "Current": current_price, 
+                            "Change %": round((open_price - current_price) / open_price * 100, 2)
+                        }) 
+
+                df_strong = pd.DataFrame(strong_stocks)
+                df_weak = pd.DataFrame(weak_stocks)
                 
-                send_email(df_s_final, df_w_final)
-                st.success("Tracking Ended & Email Sent.")
-                break
-            
-            # Sleep 30s
+                with placeholder_high.container():
+                    st.write("### 🚀 Strong Stocks (Above Open)")
+                    if not df_strong.empty:
+                        st.dataframe(df_strong.sort_values("Change %", ascending=False), height=300)
+                    else:
+                        st.write("No stocks strictly above open.")
+
+                with placeholder_low.container():
+                    st.write("### 📉 Weak Stocks (Below Open)")
+                    if not df_weak.empty:
+                        st.dataframe(df_weak.sort_values("Change %", ascending=False), height=300)
+                    else:
+                        st.write("No stocks strictly below open.")
+
+            # Auto-Save at exactly 9:25 AM
+            if now.hour == 9 and now.minute == 25 and not st.session_state.saved_today:
+                final_results = []
+                for sym, current in live_prices.items():
+                    if sym in st.session_state.open_prices:
+                        open_p = st.session_state.open_prices[sym]
+                        status = st.session_state.valid_status.get(sym, "Choppy")
+                        if status != "Choppy":
+                           final_results.append({
+                               "Symbol": sym, "Open": open_p, "Final": current,
+                               "Change %": round((current - open_p) / open_p * 100, 2) if status == "High" else round((open_p - current) / open_p * 100, 2),
+                               "Status": status
+                           })
+                if final_results:
+                    filename = f"data/report_{now.strftime('%Y-%m-%d')}.csv"
+                    pd.DataFrame(final_results).to_csv(filename, index=False)
+                    st.session_state.saved_today = True
+                    st.session_state.tracking = False 
+                    break
             time.sleep(30)
+
+# --- TAB 2: forecast_nifty ---
+with tab2:
+    st.markdown("### 🤖 AI Nifty Forecasting (Top 50)")
+    selected_stock = st.selectbox("Choose a Stock", NIFTY_50_SYMBOLS)
+    if st.button(f"🔍 AI Forecast {selected_stock}"):
+        with st.spinner("Analyzing..."):
+            hist = fetch_stock_data(selected_stock, period="60d", interval="1d")
+            if not hist.empty:
+                result = get_ai_forecast(selected_stock, hist)
+                st.markdown("#### 🤖 AI Analyst Response")
+                st.write(result)
+            else:
+                st.error("Data fetch failed.")
+
+# --- TAB 3: forcast_crypto ---
+with tab3:
+    st.markdown("### ₿ AI Crypto Forecasting")
+    cryptos = ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD", "XRP-USD", "DOGE-USD"]
+    selected_crypto = st.selectbox("Choose a Crypto", cryptos)
+    if st.button(f"🔍 AI Forecast {selected_crypto}"):
+        with st.spinner("Analyzing..."):
+            hist_crypto = fetch_stock_data(selected_crypto, period="60d", interval="1d")
+            if not hist_crypto.empty:
+                result_crypto = get_ai_forecast(selected_crypto, hist_crypto)
+                st.markdown("#### 🤖 AI Analyst Response")
+                st.write(result_crypto)
+            else:
+                st.error("Data fetch failed.")

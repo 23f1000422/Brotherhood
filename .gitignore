@@ -1,9 +1,16 @@
-# Ignore secrets and virtual environments
+# Secrets
+.streamlit/
+secrets.toml
 config.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Data
+data/
 *.csv
-!reports/*.html
 log.txt
 
-
+# Env
 .venv/
-__pycache__/
