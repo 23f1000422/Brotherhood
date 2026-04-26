@@ -15,11 +15,11 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import concurrent.futures
-from indicator_engine import scan_advanced_signals
-from forecast_engine import ForecastEngine
-from quant_tools import QuantTools
-from derivatives_engine import get_derivatives_strategy, save_options_strategy, get_atm_info
-from config import QuantConfig
+from stock_hub.indicator_engine import scan_advanced_signals
+from stock_hub.forecast_engine import ForecastEngine
+from stock_hub.quant_tools import QuantTools
+from stock_hub.derivatives_engine import get_derivatives_strategy, save_options_strategy, get_atm_info
+from stock_hub.config import QuantConfig
 
 # --- DATABASE & MAINTENANCE MANAGERS ---
 
@@ -29,7 +29,7 @@ def clean_ascii(text):
 
 class DatabaseManager:
     def __init__(self, db_path=None):
-        from config import DB_PATH
+        from stock_hub.config import DB_PATH
         self.db_path = db_path if db_path else DB_PATH
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
@@ -226,7 +226,7 @@ def run_research_cycle():
     
     # Requirement 3: Immediate Pulse Trigger if stale or empty
     try:
-        from logic_handler import fetch_market_pulse_v2 # type: ignore
+        from stock_hub.logic_handler import fetch_market_pulse_v2 # type: ignore
         with sqlite3.connect(db.db_path) as conn:
             check_df = pd.read_sql("SELECT MAX(Date) as last_date FROM raw_signals", conn)
             last_date = check_df['last_date'].iloc[0] if not check_df.empty else None
@@ -371,7 +371,7 @@ def run_research_cycle():
     # --- ENFORCE AI DATA COMPLETENESS ---
     print("[SYSTEM] Forcing Gemini AI completion for Agent_Review...")
     try:
-        from logic_handler import query_gemini
+        from stock_hub.logic_handler import query_gemini # type: ignore
         import google.generativeai as genai
         import os
         import streamlit as st
