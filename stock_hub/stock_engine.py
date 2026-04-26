@@ -220,16 +220,13 @@ NIFTY_100 = [
 ]
 
 def run_research_cycle():
-    from logic_handler import fetch_market_pulse_v2
-    import pandas as pd
-    from datetime import datetime
-    
     # 1. Maintenance & Integrity Check
     MaintenanceManager.run_daily_clean()
     db = DatabaseManager()
     
     # Requirement 3: Immediate Pulse Trigger if stale or empty
     try:
+        from logic_handler import fetch_market_pulse_v2 # type: ignore
         with sqlite3.connect(db.db_path) as conn:
             check_df = pd.read_sql("SELECT MAX(Date) as last_date FROM raw_signals", conn)
             last_date = check_df['last_date'].iloc[0] if not check_df.empty else None

@@ -4,6 +4,11 @@ import pandas as pd
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
+import streamlit as st
+try:
+    from google.oauth2.credentials import Credentials
+except ImportError:
+    Credentials = None
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -50,7 +55,6 @@ def query_gemini(prompt):
     """
     PA ARCHITECTURE: The Core Oracle decoupled locally using standard google-generativeai.
     """
-    import streamlit as st
     api_key = None
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -64,8 +68,7 @@ def query_gemini(prompt):
         return "System offline: Missing API Key."
         
     if api_key.startswith("AQ.") or api_key.startswith("ya29"):
-        from google.oauth2.credentials import Credentials
-        creds = Credentials(api_key)
+        creds = Credentials(api_key) if Credentials else None
         genai.configure(credentials=creds, transport='rest')
     else:
         genai.configure(api_key=api_key, transport='rest')
@@ -256,8 +259,7 @@ def generate_linkedin_content(content_type="market"):
     if not api_key: return "API Key Missing."
     
     if api_key.startswith("AQ.") or api_key.startswith("ya29"):
-        from google.oauth2.credentials import Credentials
-        creds = Credentials(api_key)
+        creds = Credentials(api_key) if Credentials else None
         genai.configure(credentials=creds, transport='rest')
     else:
         genai.configure(api_key=api_key, transport='rest')
