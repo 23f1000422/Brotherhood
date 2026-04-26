@@ -12,7 +12,7 @@ if PROJECT_ROOT not in sys.path:
 
 try:
     from stock_hub.logic_handler import (
-        query_gemini, brain_db, fetch_market_pulse_v2, 
+        query_gemini, brain_db, fetch_market_pulse, 
         get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
     )
     from stock_hub.stock_engine import run_research_cycle
@@ -21,7 +21,7 @@ except ImportError as e:
     # Fallback for some cloud environments
     sys.path.insert(0, os.path.join(PROJECT_ROOT, "stock_hub"))
     from logic_handler import (
-        query_gemini, brain_db, fetch_market_pulse_v2, 
+        query_gemini, brain_db, fetch_market_pulse, 
         get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
     )
     from stock_engine import run_research_cycle
@@ -86,7 +86,7 @@ def main():
         
         # --- MARKET PULSE INDICES (LIVE) ---
         try:
-            pulse_data = fetch_market_pulse_v2()
+            pulse_data = fetch_market_pulse()
             if pulse_data:
                 pulse_cols = st.columns(len(pulse_data))
                 for idx, p in enumerate(pulse_data):

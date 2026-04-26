@@ -116,7 +116,7 @@ def get_cross_domain_strategy():
         
     return "Proprietary Momentum Scanner: Monitoring for breakout triggers."
 
-def fetch_market_pulse_v2():
+def fetch_market_pulse():
     import yfinance as yf
     indices = {
         "^NSEI": "Nifty 50",

@@ -226,7 +226,7 @@ def run_research_cycle():
     
     # Requirement 3: Immediate Pulse Trigger if stale or empty
     try:
-        from stock_hub.logic_handler import fetch_market_pulse_v2 # type: ignore
+        from stock_hub.logic_handler import fetch_market_pulse # type: ignore
         with sqlite3.connect(db.db_path) as conn:
             check_df = pd.read_sql("SELECT MAX(Date) as last_date FROM raw_signals", conn)
             last_date = check_df['last_date'].iloc[0] if not check_df.empty else None
@@ -234,7 +234,7 @@ def run_research_cycle():
             
             if not last_date or last_date != today:
                 print("[INTEGRITY] STALE DATA DETECTED | Triggering Market Pulse...")
-                fetch_market_pulse_v2() # Immediate fetch
+                fetch_market_pulse() # Immediate fetch
     except Exception as e:
         print(f"[INTEGRITY WARNING] Pulse check bypassed: {e}")
     
