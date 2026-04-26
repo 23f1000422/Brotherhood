@@ -1,6 +1,8 @@
 import os
 import sqlite3
 import pandas as pd
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 from dotenv import load_dotenv
 

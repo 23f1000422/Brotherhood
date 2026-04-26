@@ -4,6 +4,8 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import json
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 from datetime import datetime
 import google.generativeai as genai
 from dotenv import load_dotenv

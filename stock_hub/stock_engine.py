@@ -1,5 +1,7 @@
-import os
 import sys
+import os
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 import time
 sys.path.append(os.getcwd())
 
