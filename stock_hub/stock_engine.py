@@ -239,6 +239,7 @@ def run_research_cycle():
         print(f"[INTEGRITY WARNING] Pulse check bypassed: {e}")
     
     print("[INIT] PRIME O-L MOMENTUM ENGINE | Processing Markets (Modular v3)...")
+    config = QuantConfig.load()
     
     forecaster = ForecastEngine()
     signals = scan_advanced_signals(NIFTY_100)
