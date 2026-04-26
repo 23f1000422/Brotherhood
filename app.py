@@ -4,13 +4,17 @@ import sys
 import pandas as pd
 import json
 import sqlite3
-from stock_hub.logic_handler import query_gemini, brain_db, fetch_market_pulse_v2
+from stock_hub.logic_handler import query_gemini, brain_db, fetch_market_pulse_v2, get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
+from stock_hub.stock_engine import run_research_cycle
+import plotly.express as px # type: ignore
 from dotenv import load_dotenv
 
 load_dotenv()
 # --- CACHE CLEARANCE FOR PRODUCTION ---
-st.cache_data.clear()
-st.cache_resource.clear()
+if 'cache_cleared' not in st.session_state:
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.session_state.cache_cleared = True
 
 st.set_page_config(page_title="Indigenous AI Cockpit", page_icon="🧬", layout="wide")
 
@@ -121,11 +125,6 @@ def main():
         else:
             st.info("Searching for Fresh Data... The engine operates locally.")
             if st.button("🚀 TRIGGER RESEARCH CYCLE NOW"):
-                # Use current directory to ensure relative path works on any OS
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                hub_path = os.path.join(current_dir, "stock_hub")
-                if hub_path not in sys.path: sys.path.append(hub_path)
-                from stock_engine import run_research_cycle
                 with st.spinner("Processing Markets..."):
                     run_research_cycle()
                     st.rerun()
@@ -152,7 +151,6 @@ def main():
 
         st.divider()
         st.subheader("📚 Mutual Fund Insights")
-        from stock_hub.logic_handler import get_mf_returns_table
         mf_data = get_mf_returns_table()
         if not mf_data.empty:
             st.dataframe(mf_data, use_container_width=True, hide_index=True)
@@ -181,7 +179,6 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("📊 Sectoral Performance")
-            from stock_hub.logic_handler import fetch_sector_performance
             sector_df = fetch_sector_performance()
             if not sector_df.empty:
                 st.bar_chart(sector_df.set_index("Sector"))
@@ -191,12 +188,10 @@ def main():
         
         with col2:
             st.subheader("🔥 Volume Sentiment (Trending)")
-            from stock_hub.logic_handler import fetch_trending_tickers
             trend_df = fetch_trending_tickers()
             if not trend_df.empty:
                 # Color coding: Green for Bullish, Red for Bearish
                 # We assume Trend contains 'Bullish' or 'Bearish'
-                import plotly.express as px
                 # Add a dummy color column
                 trend_df['Color'] = trend_df['Change_Pct'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
                 fig = px.bar(trend_df, x='Ticker', y='Volume', color='Color',
