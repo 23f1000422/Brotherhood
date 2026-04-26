@@ -132,7 +132,7 @@ def fetch_market_pulse():
                 results.append({
                     "name": name,
                     "value": round(last_close, 2),
-                    "delta": f"{round(delta_pct, 2)} ({round(delta_pct, 2)}%)"
+                    "delta": f"{round(delta_val, 2)} ({round(delta_pct, 2)}%)"
                 })
         except:
             pass
