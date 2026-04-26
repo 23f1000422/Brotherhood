@@ -186,20 +186,6 @@ def main():
 
         st.divider()
         
-        # Row 1.5: Top Movers
-        st.subheader("🚀 Top Movers (Session Performance)")
-        from stock_hub.logic_handler import fetch_top_movers
-        movers_df = fetch_top_movers()
-        if not movers_df.empty:
-            m_cols = st.columns(5)
-            for i, row in movers_df.iterrows():
-                with m_cols[i]:
-                    label = row['Ticker']
-                    val = f"{row['Price']}"
-                    delta = f"{row['Change_Pct']}%"
-                    st.metric(label=label, value=val, delta=delta)
-            st.caption("Basis: Top 5 tickers by session percentage growth.")
-        
         st.divider()
         
         # Row 2: Controls

@@ -133,7 +133,7 @@ def fetch_sector_performance():
     import yfinance as yf
     sectors = {
         "^CNXIT": "IT",
-        "^CNXBANK": "Bank",
+        "^NSEBANK": "Bank",
         "^CNXPHARMA": "Pharma",
         "^CNXAUTO": "Auto",
         "^CNXMETAL": "Metal",
