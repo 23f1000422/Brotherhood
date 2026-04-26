@@ -220,7 +220,7 @@ NIFTY_100 = [
 ]
 
 def run_research_cycle():
-    from logic_handler import fetch_market_pulse
+    from logic_handler import fetch_market_pulse_v2
     import pandas as pd
     from datetime import datetime
     
@@ -237,7 +237,7 @@ def run_research_cycle():
             
             if not last_date or last_date != today:
                 print("[INTEGRITY] STALE DATA DETECTED | Triggering Market Pulse...")
-                fetch_market_pulse() # Immediate fetch
+                fetch_market_pulse_v2() # Immediate fetch
     except Exception as e:
         print(f"[INTEGRITY WARNING] Pulse check bypassed: {e}")
     

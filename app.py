@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 import json
 import sqlite3
-from stock_hub.logic_handler import query_gemini, brain_db, fetch_market_pulse
+from stock_hub.logic_handler import query_gemini, brain_db, fetch_market_pulse_v2
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -57,7 +57,7 @@ def main():
     tabs = st.tabs(["🖥️ MARKET TERMINAL", "🚀 STRATEGY & CONTENT HUB"])
 
     with tabs[0]:
-        st.header("🖥️ Proprietary Market Terminal")
+        st.header("🖥️ Proprietary Market Terminal (v1.2.1-stable)")
         db_path = os.path.join("stock_hub", "brotherhood_data.db")
         
         if os.path.exists(db_path):
@@ -78,7 +78,7 @@ def main():
                         st.markdown(f"**Terminal Sync: {latest_ts}**")
                         
                         # --- MARKET PULSE INDICES ---
-                        pulse_data = fetch_market_pulse()
+                        pulse_data = fetch_market_pulse_v2()
                         if pulse_data:
                             pulse_cols = st.columns(len(pulse_data))
                             for idx, p in enumerate(pulse_data):
@@ -141,6 +141,9 @@ def main():
                     if latest_d_date:
                         deriv_query = f"SELECT * FROM derivatives WHERE Date = '{latest_d_date}'"
                         opt_df = pd.read_sql(deriv_query, conn)
+                        if not opt_df.empty and 'Ticker' in opt_df.columns:
+                            mapping = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
+                            opt_df['Ticker'] = opt_df['Ticker'].map(mapping).fillna(opt_df['Ticker'])
                         st.dataframe(opt_df, use_container_width=True)
                     else:
                         st.info("Derivatives analytics pending research cycle.")
