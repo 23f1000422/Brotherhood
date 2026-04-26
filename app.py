@@ -12,18 +12,20 @@ if PROJECT_ROOT not in sys.path:
 
 try:
     from stock_hub.logic_handler import (
-        query_gemini, brain_db, fetch_market_pulse, 
+        query_gemini, brain_db, 
         get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
     )
+    from stock_hub.pulse_engine import fetch_market_pulse_standalone
     from stock_hub.stock_engine import run_research_cycle
 except ImportError as e:
     st.error(f"System Boot Failure (Pathing): {e}")
     # Fallback for some cloud environments
     sys.path.insert(0, os.path.join(PROJECT_ROOT, "stock_hub"))
     from logic_handler import (
-        query_gemini, brain_db, fetch_market_pulse, 
+        query_gemini, brain_db, 
         get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
     )
+    from pulse_engine import fetch_market_pulse_standalone
     from stock_engine import run_research_cycle
 
 import plotly.express as px # type: ignore
@@ -84,9 +86,9 @@ def main():
         st.header("🖥️ Proprietary Market Terminal (v1.2.1-stable)")
         db_path = os.path.join("stock_hub", "brotherhood_data.db")
         
-        # --- MARKET PULSE INDICES (LIVE) ---
+        # --- MARKET PULSE INDICES (LIVE REFRESH) ---
         try:
-            pulse_data = fetch_market_pulse()
+            pulse_data = fetch_market_pulse_standalone()
             if pulse_data:
                 pulse_cols = st.columns(len(pulse_data))
                 for idx, p in enumerate(pulse_data):
