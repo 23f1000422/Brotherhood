@@ -129,12 +129,14 @@ def fetch_market_pulse():
                 prev_close = hist['Close'].iloc[-2]
                 delta_val = last_close - prev_close
                 delta_pct = (delta_val / prev_close) * 100
+                delta_sign = "+" if delta_val > 0 else ""
                 results.append({
                     "name": name,
                     "value": round(last_close, 2),
-                    "delta": f"{round(delta_val, 2)} ({round(delta_pct, 2)}%)"
+                    "delta": f"{delta_sign}{round(delta_val, 2)} ({round(delta_pct, 2)}%)"
                 })
-        except:
+        except Exception as e:
+            # Silent fallback for network latency
             pass
     return results
 
