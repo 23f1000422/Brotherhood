@@ -91,14 +91,18 @@ def main():
                 pulse_cols = st.columns(len(pulse_data))
                 for idx, p in enumerate(pulse_data):
                     with pulse_cols[idx]:
-                        # Case-Insensitive Mapping
-                        m_ticker = p['symbol'].upper()
-                        display_name = TICKER_MAP.get(m_ticker, p['name'])
-                        st.metric(
-                            label=display_name, 
-                            value=f"{float(p['value']):,.2f}", 
-                            delta=f"{p['delta_val']:+,.2f} ({p['delta_pct']}% )"
-                        )
+                        # Defensive Key Access to handle Cache Latency
+                        raw_ticker = p.get('symbol', p.get('name', 'N/A'))
+                        m_ticker = str(raw_ticker).upper()
+                        display_name = TICKER_MAP.get(m_ticker, p.get('name', raw_ticker))
+                        
+                        val_v = float(p.get('value', 0))
+                        if 'delta_val' in p:
+                            delta_display = f"{p['delta_val']:+,.2f} ({p['delta_pct']}% )"
+                        else:
+                            delta_display = p.get('delta', 'N/A')
+
+                        st.metric(label=display_name, value=f"{val_v:,.2f}", delta=delta_display)
             st.markdown("---")
         except Exception as pulse_err:
             st.warning(f"Market Pulse Latency: {pulse_err}")
