@@ -4,8 +4,28 @@ import sys
 import pandas as pd
 import json
 import sqlite3
-from stock_hub.logic_handler import query_gemini, brain_db, fetch_market_pulse_v2, get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
-from stock_hub.stock_engine import run_research_cycle
+
+# --- RESILIENT PROJECT PATHING ---
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+try:
+    from stock_hub.logic_handler import (
+        query_gemini, brain_db, fetch_market_pulse_v2, 
+        get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
+    )
+    from stock_hub.stock_engine import run_research_cycle
+except ImportError as e:
+    st.error(f"System Boot Failure (Pathing): {e}")
+    # Fallback for some cloud environments
+    sys.path.insert(0, os.path.join(PROJECT_ROOT, "stock_hub"))
+    from logic_handler import (
+        query_gemini, brain_db, fetch_market_pulse_v2, 
+        get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
+    )
+    from stock_engine import run_research_cycle
+
 import plotly.express as px # type: ignore
 from dotenv import load_dotenv
 
