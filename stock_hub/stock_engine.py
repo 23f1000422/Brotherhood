@@ -36,6 +36,15 @@ class DatabaseManager:
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
+            # SCHEMA INTEGRITY CHECK: If old column 'symbol' exists, force reset
+            try:
+                conn.execute("SELECT Ticker FROM processed_watchlist LIMIT 1")
+            except sqlite3.OperationalError:
+                print("[SCHEMA] Detected old DB schema (missing Ticker column). DROPPING TABLES for reset...")
+                conn.execute("DROP TABLE IF EXISTS raw_signals")
+                conn.execute("DROP TABLE IF EXISTS processed_watchlist")
+                conn.execute("DROP TABLE IF EXISTS derivatives")
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS raw_signals (
                     Date TEXT,

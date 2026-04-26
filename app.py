@@ -109,9 +109,10 @@ def main():
                             st.metric("P-OL Tickers", len(df))
                             
                         st.write(f"### 📈 Watchlist Telemetry ({latest_date})")
-                        # Ticker Aliasing for Dataframe Display
+                        # Ticker Aliasing for Dataframe Display (Robust Mapping)
                         if not df.empty and 'Ticker' in df.columns:
-                            df['Ticker'] = df['Ticker'].apply(lambda x: TICKER_MAP.get(x, x))
+                            mapping = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
+                            df['Ticker'] = df['Ticker'].map(mapping).fillna(df['Ticker'])
                         st.dataframe(df, use_container_width=True)
                     else:
                         st.info("Database is empty. Please trigger a research cycle.")
