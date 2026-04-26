@@ -201,21 +201,28 @@ def main():
                 with st.spinner("Drafting Education..."):
                     st.session_state.post2 = generate_linkedin_content("mf")
 
-        # Row 3: Output (Wide Container)
+        # Row 3: Output (Wide Container for Mobile Compatibility)
         if 'post1' in st.session_state or 'post2' in st.session_state:
             st.divider()
-            with st.container(border=True):
-                st.subheader("📝 Strategic Content Window")
-                if 'post1' in st.session_state:
+            st.subheader("📝 Strategic Content Window")
+            st.info("💡 **Mobile Tip**: Use the 📋 icon on the top-right of the boxes below to copy contents instantly.")
+            
+            # We use columns for side-by-side on desktop, which stacks on mobile
+            out_col1, out_col2 = st.columns(2)
+            
+            if 'post1' in st.session_state:
+                with out_col1:
                     st.markdown("#### 🚀 Tactical Market Insight")
-                    st.code(st.session_state.post1, language="markdown")
-                    st.caption("Direct Copy Enabled | Optimization: Prime O-L Sentiment")
-                
-                if 'post2' in st.session_state:
-                    if 'post1' in st.session_state: st.divider()
-                    st.markdown("#### 📚 Educational Series: Wealth Management")
-                    st.code(st.session_state.post2, language="markdown")
-                    st.caption("Direct Copy Enabled | Optimization: Education Pivot")
+                    with st.container(height=400, border=True):
+                        st.code(st.session_state.post1, language="markdown")
+                    st.caption("Optimized for Prime O-L Sentiment")
+            
+            if 'post2' in st.session_state:
+                with out_col2:
+                    st.markdown("#### 📚 Educational Series")
+                    with st.container(height=400, border=True):
+                        st.code(st.session_state.post2, language="markdown")
+                    st.caption("Optimized for Education Pivot")
 
 if __name__ == "__main__":
     main()

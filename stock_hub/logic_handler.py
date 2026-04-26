@@ -154,7 +154,6 @@ def fetch_sector_performance():
 def fetch_trending_tickers():
     try:
         with sqlite3.connect(r"D:\Brotherhood\stock_hub\brotherhood_data.db") as conn:
-            # Join with processed_watchlist if needed, but raw_signals has Volume
             query = """
                 SELECT Ticker, Price, Volume, Change_Pct 
                 FROM raw_signals 
@@ -162,7 +161,13 @@ def fetch_trending_tickers():
                 ORDER BY Volume DESC LIMIT 5
             """
             df = pd.read_sql(query, conn)
-            return df
+            if not df.empty: return df
+            # Fallback for fresh DB: Mock data for visualization
+            return pd.DataFrame([
+                {"Ticker": "NIFTY_P", "Price": 22450, "Volume": 500000, "Change_Pct": 1.2},
+                {"Ticker": "BANK_P", "Price": 48200, "Volume": 350000, "Change_Pct": -0.5},
+                {"Ticker": "IT_P", "Price": 36000, "Volume": 420000, "Change_Pct": 0.8},
+            ])
     except:
         return pd.DataFrame()
 
