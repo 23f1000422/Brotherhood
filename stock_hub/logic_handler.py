@@ -57,17 +57,18 @@ def query_gemini(prompt):
     except:
         api_key = os.environ.get("GOOGLE_API_KEY")
 
+    if api_key:
+        api_key = api_key.strip()
+
     if not api_key:
         return "System offline: Missing API Key."
         
     if api_key.startswith("AQ.") or api_key.startswith("ya29"):
         from google.oauth2.credentials import Credentials
         creds = Credentials(api_key)
-        if "GOOGLE_API_KEY" in os.environ:
-            del os.environ["GOOGLE_API_KEY"]
-        genai.configure(credentials=creds)
+        genai.configure(credentials=creds, transport='rest')
     else:
-        genai.configure(api_key=api_key)
+        genai.configure(api_key=api_key, transport='rest')
     
     history_records = brain_db.get_history(limit=5)
     context = "\n".join([f"{h[0]}: {h[1]}" for h in history_records])
@@ -131,9 +132,11 @@ def fetch_market_pulse():
                 delta_pct = (delta_val / prev_close) * 100
                 delta_sign = "+" if delta_val > 0 else ""
                 results.append({
+                    "symbol": ticker,
                     "name": name,
-                    "value": round(last_close, 2),
-                    "delta": f"{delta_sign}{round(delta_val, 2)} ({round(delta_pct, 2)}%)"
+                    "value": last_close,
+                    "delta_val": delta_val,
+                    "delta_pct": round(delta_pct, 2)
                 })
         except Exception as e:
             # Silent fallback for network latency
@@ -247,9 +250,17 @@ def generate_linkedin_content(content_type="market"):
     except:
         api_key = os.environ.get("GOOGLE_API_KEY")
 
+    if api_key:
+        api_key = api_key.strip().strip("'").strip('"')
+
     if not api_key: return "API Key Missing."
     
-    genai.configure(api_key=api_key)
+    if api_key.startswith("AQ.") or api_key.startswith("ya29"):
+        from google.oauth2.credentials import Credentials
+        creds = Credentials(api_key)
+        genai.configure(credentials=creds, transport='rest')
+    else:
+        genai.configure(api_key=api_key, transport='rest')
     model = genai.GenerativeModel('gemini-flash-lite-latest')
     
     db_state = get_db_context()

@@ -211,11 +211,26 @@ NIFTY_100 = [
 ]
 
 def run_research_cycle():
-    # 1. Maintenance
-    MaintenanceManager.run_daily_clean()
+    from logic_handler import fetch_market_pulse
+    import pandas as pd
+    from datetime import datetime
     
-    config = QuantConfig.load()
+    # 1. Maintenance & Integrity Check
+    MaintenanceManager.run_daily_clean()
     db = DatabaseManager()
+    
+    # Requirement 3: Immediate Pulse Trigger if stale or empty
+    try:
+        with sqlite3.connect(db.db_path) as conn:
+            check_df = pd.read_sql("SELECT MAX(Date) as last_date FROM raw_signals", conn)
+            last_date = check_df['last_date'].iloc[0] if not check_df.empty else None
+            today = datetime.now().strftime("%Y-%m-%d")
+            
+            if not last_date or last_date != today:
+                print("[INTEGRITY] STALE DATA DETECTED | Triggering Market Pulse...")
+                fetch_market_pulse() # Immediate fetch
+    except Exception as e:
+        print(f"[INTEGRITY WARNING] Pulse check bypassed: {e}")
     
     print("[INIT] PRIME O-L MOMENTUM ENGINE | Processing Markets (Modular v3)...")
     
@@ -360,14 +375,15 @@ def run_research_cycle():
             api_key = os.environ.get("GOOGLE_API_KEY")
 
         if api_key:
+            api_key = api_key.strip().strip("'").strip('"')
+
+        if api_key:
             if api_key.startswith("AQ.") or api_key.startswith("ya29"):
                 from google.oauth2.credentials import Credentials
                 creds = Credentials(api_key)
-                if "GOOGLE_API_KEY" in os.environ:
-                    del os.environ["GOOGLE_API_KEY"]
-                genai.configure(credentials=creds)
+                genai.configure(credentials=creds, transport='rest')
             else:
-                genai.configure(api_key=api_key)
+                genai.configure(api_key=api_key, transport='rest')
                 
             model = genai.GenerativeModel('gemini-flash-lite-latest')
             for item in final_report:

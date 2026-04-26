@@ -8,7 +8,13 @@ from stock_hub.logic_handler import query_gemini, brain_db, fetch_market_pulse
 from dotenv import load_dotenv
 
 load_dotenv()
+# --- CACHE CLEARANCE FOR PRODUCTION ---
+st.cache_data.clear()
+st.cache_resource.clear()
+
 st.set_page_config(page_title="Indigenous AI Cockpit", page_icon="🧬", layout="wide")
+
+TICKER_MAP = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
 
 # --- UI STYLING ---
 st.markdown("""
@@ -77,7 +83,14 @@ def main():
                             pulse_cols = st.columns(len(pulse_data))
                             for idx, p in enumerate(pulse_data):
                                 with pulse_cols[idx]:
-                                    st.metric(label=p['name'], value=p['value'], delta=p['delta'])
+                                    # Hard-Mapping: Force string formatting for metric and delta
+                                    # p['value'] is absolute price, p['delta_val'] is change, p['delta_pct'] is %
+                                    display_name = TICKER_MAP.get(p['symbol'], p['name'])
+                                    st.metric(
+                                        label=display_name, 
+                                        value=f"{float(p['value']):,.2f}", 
+                                        delta=f"{p['delta_val']:+,.2f} ({p['delta_pct']}% )"
+                                    )
                         st.markdown("---")
                         
                         query = f"SELECT * FROM processed_watchlist WHERE Date = '{latest_date}'"
@@ -96,6 +109,9 @@ def main():
                             st.metric("P-OL Tickers", len(df))
                             
                         st.write(f"### 📈 Watchlist Telemetry ({latest_date})")
+                        # Ticker Aliasing for Dataframe Display
+                        if not df.empty and 'Ticker' in df.columns:
+                            df['Ticker'] = df['Ticker'].apply(lambda x: TICKER_MAP.get(x, x))
                         st.dataframe(df, use_container_width=True)
                     else:
                         st.info("Database is empty. Please trigger a research cycle.")
