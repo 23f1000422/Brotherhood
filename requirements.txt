@@ -1,7 +1,7 @@
-streamlit==1.46.0
-pandas==2.2.3
-yfinance==0.2.63
+streamlit
+pandas
+yfinance
 google-generativeai
 python-dotenv
-plotly==6.7.0
+plotly
 google-auth
