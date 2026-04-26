@@ -64,6 +64,25 @@ def main():
         st.header("🖥️ Proprietary Market Terminal (v1.2.1-stable)")
         db_path = os.path.join("stock_hub", "brotherhood_data.db")
         
+        # --- MARKET PULSE INDICES (LIVE) ---
+        try:
+            pulse_data = fetch_market_pulse_v2()
+            if pulse_data:
+                pulse_cols = st.columns(len(pulse_data))
+                for idx, p in enumerate(pulse_data):
+                    with pulse_cols[idx]:
+                        # Case-Insensitive Mapping
+                        m_ticker = p['symbol'].upper()
+                        display_name = TICKER_MAP.get(m_ticker, p['name'])
+                        st.metric(
+                            label=display_name, 
+                            value=f"{float(p['value']):,.2f}", 
+                            delta=f"{p['delta_val']:+,.2f} ({p['delta_pct']}% )"
+                        )
+            st.markdown("---")
+        except Exception as pulse_err:
+            st.warning(f"Market Pulse Latency: {pulse_err}")
+
         if os.path.exists(db_path):
             try:
                 with sqlite3.connect(db_path) as conn:
@@ -80,22 +99,6 @@ def main():
                             latest_ts = "N/A"
                             
                         st.markdown(f"**Terminal Sync: {latest_ts}**")
-                        
-                        # --- MARKET PULSE INDICES ---
-                        pulse_data = fetch_market_pulse_v2()
-                        if pulse_data:
-                            pulse_cols = st.columns(len(pulse_data))
-                            for idx, p in enumerate(pulse_data):
-                                with pulse_cols[idx]:
-                                    # Hard-Mapping: Force string formatting for metric and delta
-                                    # p['value'] is absolute price, p['delta_val'] is change, p['delta_pct'] is %
-                                    display_name = TICKER_MAP.get(p['symbol'], p['name'])
-                                    st.metric(
-                                        label=display_name, 
-                                        value=f"{float(p['value']):,.2f}", 
-                                        delta=f"{p['delta_val']:+,.2f} ({p['delta_pct']}% )"
-                                    )
-                        st.markdown("---")
                         
                         query = f"SELECT * FROM processed_watchlist WHERE Date = '{latest_date}'"
                         df = pd.read_sql(query, conn)
@@ -142,7 +145,7 @@ def main():
                         opt_df = pd.read_sql(deriv_query, conn)
                         if not opt_df.empty and 'Ticker' in opt_df.columns:
                             mapping = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
-                            opt_df['Ticker'] = opt_df['Ticker'].map(mapping).fillna(opt_df['Ticker'])
+                            opt_df['Ticker'] = opt_df['Ticker'].str.upper().map(mapping).fillna(opt_df['Ticker'])
                         st.dataframe(opt_df, use_container_width=True)
                     else:
                         st.info("Derivatives analytics pending research cycle.")
