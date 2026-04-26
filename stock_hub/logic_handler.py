@@ -50,7 +50,13 @@ def query_gemini(prompt):
     """
     PA ARCHITECTURE: The Core Oracle decoupled locally using standard google-generativeai.
     """
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    import streamlit as st
+    api_key = None
+    try:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    except:
+        api_key = os.environ.get("GOOGLE_API_KEY")
+
     if not api_key:
         return "System offline: Missing API Key."
         
@@ -232,7 +238,13 @@ def get_mf_returns_table():
     return pd.DataFrame(rows)
 
 def generate_linkedin_content(content_type="market"):
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    import streamlit as st
+    api_key = None
+    try:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+    except:
+        api_key = os.environ.get("GOOGLE_API_KEY")
+
     if not api_key: return "API Key Missing."
     
     genai.configure(api_key=api_key)

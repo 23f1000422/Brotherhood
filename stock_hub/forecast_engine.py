@@ -21,7 +21,13 @@ class ForecastEngine:
         self.weights = self._load_weights()
         
         
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        import streamlit as st
+        api_key = None
+        try:
+            api_key = st.secrets["GOOGLE_API_KEY"]
+        except:
+            api_key = os.environ.get("GOOGLE_API_KEY")
+
         if api_key:
             if api_key.startswith("AQ.") or api_key.startswith("ya29"):
                 from google.oauth2.credentials import Credentials
