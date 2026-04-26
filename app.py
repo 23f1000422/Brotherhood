@@ -52,7 +52,7 @@ def main():
 
     with tabs[0]:
         st.header("🖥️ Proprietary Market Terminal")
-        db_path = r"D:\Brotherhood\stock_hub\brotherhood_data.db"
+        db_path = os.path.join("stock_hub", "brotherhood_data.db")
         
         if os.path.exists(db_path):
             try:
@@ -104,7 +104,11 @@ def main():
         else:
             st.info("Searching for Fresh Data... The engine operates locally.")
             if st.button("🚀 TRIGGER RESEARCH CYCLE NOW"):
-                import sys; sys.path.append(r"D:\Brotherhood\stock_hub"); from stock_engine import run_research_cycle
+                # Use current directory to ensure relative path works on any OS
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                hub_path = os.path.join(current_dir, "stock_hub")
+                if hub_path not in sys.path: sys.path.append(hub_path)
+                from stock_engine import run_research_cycle
                 with st.spinner("Processing Markets..."):
                     run_research_cycle()
                     st.rerun()

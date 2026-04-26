@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class LocalBrainDB:
-    def __init__(self, db_path=r"D:\Brotherhood\stock_hub\brotherhood_data.db"):
+    def __init__(self, db_path=os.path.join("stock_hub", "brotherhood_data.db")):
         self.db_path = db_path
         self._init_db()
         
@@ -34,7 +34,8 @@ brain_db = LocalBrainDB()
 
 def get_db_context():
     try:
-        with sqlite3.connect(r"D:\Brotherhood\stock_hub\brotherhood_data.db") as conn:
+        db_path = os.path.join("stock_hub", "brotherhood_data.db")
+        with sqlite3.connect(db_path) as conn:
             query = "SELECT * FROM processed_watchlist WHERE Date = (SELECT MAX(Date) FROM processed_watchlist)"
             df = pd.read_sql(query, conn)
             if not df.empty:
@@ -88,7 +89,7 @@ def get_cross_domain_strategy():
     KNOWLEDGE BRIDGE: Decoupled to query local sqlite.
     """
     try:
-        db_path = r"D:\Brotherhood\stock_hub\brotherhood_data.db"
+        db_path = os.path.join("stock_hub", "brotherhood_data.db")
         if not os.path.exists(db_path):
             return "Oracle: Database uninitialized. Proceed with caution."
             
@@ -153,7 +154,8 @@ def fetch_sector_performance():
 
 def fetch_trending_tickers():
     try:
-        with sqlite3.connect(r"D:\Brotherhood\stock_hub\brotherhood_data.db") as conn:
+        db_path = os.path.join("stock_hub", "brotherhood_data.db")
+        with sqlite3.connect(db_path) as conn:
             query = """
                 SELECT Ticker, Price, Volume, Change_Pct 
                 FROM raw_signals 
@@ -173,7 +175,8 @@ def fetch_trending_tickers():
 
 def fetch_top_movers():
     try:
-        with sqlite3.connect(r"D:\Brotherhood\stock_hub\brotherhood_data.db") as conn:
+        db_path = os.path.join("stock_hub", "brotherhood_data.db")
+        with sqlite3.connect(db_path) as conn:
             query = """
                 SELECT Ticker, Price, Change_Pct 
                 FROM raw_signals 

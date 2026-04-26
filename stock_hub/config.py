@@ -2,7 +2,8 @@ import json
 import os
 
 CONFIG_PATH = "config.json"
-DB_PATH = r"D:\Brotherhood\stock_hub\brotherhood_data.db"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "stock_hub", "brotherhood_data.db")
 
 class QuantConfig:
     DEFAULT = {
