@@ -175,11 +175,19 @@ def main():
                             mapping = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
                             df['Ticker'] = df['Ticker'].map(mapping).fillna(df['Ticker'])
                         st.dataframe(df, use_container_width=True)
+                    else:
+                        st.info("Database initialized but empty. Please trigger manual refresh if today's data is missing.")
+            except Exception as e:
+                st.error(f"Database Read Error: {e}")
+        else:
+            st.info("Searching for Fresh Data... Engine operates locally.")
+
         st.write("---")
         if st.button("🚀 MANUAL REFRESH (TRIGGER RESEARCH CYCLE)"):
             with st.spinner("Reprocessing Markets..."):
                 run_research_cycle()
                 st.rerun()
+
         
         st.divider()
         st.subheader("📊 Systematic Derivatives & ATM Strategy")
