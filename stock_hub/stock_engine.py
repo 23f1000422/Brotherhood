@@ -13,7 +13,7 @@ import sqlite3
 import yfinance as yf
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timedelta
 import concurrent.futures
 from stock_hub.indicator_engine import scan_advanced_signals
 from stock_hub.forecast_engine import ForecastEngine
@@ -88,13 +88,9 @@ class DatabaseManager:
             """)
 
     def save_raw_signals(self, signals):
-        try:
-            hist = yf.Ticker('^NSEI').history(period='5d')
-            date_str = hist.index[-1].strftime("%Y-%m-%d")
-        except:
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            
-        exact_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        date_str = ist_now.strftime("%Y-%m-%d")
+        exact_time = ist_now.strftime("%Y-%m-%d %H:%M:%S")
         timestamp_str = clean_ascii(exact_time)
 
         with sqlite3.connect(self.db_path) as conn:
@@ -108,13 +104,9 @@ class DatabaseManager:
                     pass
 
     def save_processed_watchlist(self, records):
-        try:
-            hist = yf.Ticker('^NSEI').history(period='5d')
-            date_str = hist.index[-1].strftime("%Y-%m-%d")
-        except:
-            date_str = datetime.now().strftime("%Y-%m-%d")
-            
-        exact_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        date_str = ist_now.strftime("%Y-%m-%d")
+        exact_time = ist_now.strftime("%Y-%m-%d %H:%M:%S")
         timestamp_str = clean_ascii(exact_time)
 
         with sqlite3.connect(self.db_path) as conn:
@@ -129,13 +121,9 @@ class DatabaseManager:
                     print(f"DB Error: {e}")
 
     def save_derivatives(self, options_data):
-        try:
-            hist = yf.Ticker('^NSEI').history(period='5d')
-            date_str = hist.index[-1].strftime("%Y-%m-%d")
-        except:
-            date_str = datetime.now().strftime("%Y-%m-%d")
-
-        exact_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        date_str = ist_now.strftime("%Y-%m-%d")
+        exact_time = ist_now.strftime("%Y-%m-%d %H:%M:%S")
         timestamp_str = clean_ascii(exact_time)
 
         with sqlite3.connect(self.db_path) as conn:

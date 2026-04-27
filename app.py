@@ -4,6 +4,7 @@ import sys
 import pandas as pd
 import json
 import sqlite3
+from datetime import datetime, timedelta
 
 # --- RESILIENT PROJECT PATHING ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -57,6 +58,33 @@ def main():
         st.session_state.messages = [] 
         st.session_state.chat_purged = True
         st.rerun()
+
+    # --- AUTO-REFRESH LOGIC (CRITICAL) ---
+    ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    today_str = ist_now.strftime("%Y-%m-%d")
+    
+    # Check if DB is stale on launch
+    db_path = os.path.join("stock_hub", "brotherhood_data.db")
+    if os.path.exists(db_path):
+        try:
+            with sqlite3.connect(db_path) as conn:
+                df_date = pd.read_sql("SELECT MAX(Date) as max_date FROM processed_watchlist", conn)
+                latest_db_date = df_date['max_date'].iloc[0] if not df_date.empty else None
+                
+                # If market is open (or it's just a new day) and we haven't run today
+                if latest_db_date != today_str and "auto_run_attempted" not in st.session_state:
+                    st.session_state.auto_run_attempted = True
+                    with st.spinner("🌞 New Day Detected. Initializing Market Terminal..."):
+                        run_research_cycle()
+                        st.rerun()
+        except: pass
+    else:
+        # No DB at all, force run
+        if "auto_run_attempted" not in st.session_state:
+            st.session_state.auto_run_attempted = True
+            with st.spinner("🚀 Bootstrapping Terminal Database..."):
+                run_research_cycle()
+                st.rerun()
 
     # --- SIDEBAR: MASTER ORACLE ---
     st.sidebar.title("🛰️ MASTER ORACLE")
@@ -147,16 +175,11 @@ def main():
                             mapping = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
                             df['Ticker'] = df['Ticker'].map(mapping).fillna(df['Ticker'])
                         st.dataframe(df, use_container_width=True)
-                    else:
-                        st.info("Database is empty. Please trigger a research cycle.")
-            except Exception as e:
-                st.error(f"Database Error: {e}")
-        else:
-            st.info("Searching for Fresh Data... The engine operates locally.")
-            if st.button("🚀 TRIGGER RESEARCH CYCLE NOW"):
-                with st.spinner("Processing Markets..."):
-                    run_research_cycle()
-                    st.rerun()
+        st.write("---")
+        if st.button("🚀 MANUAL REFRESH (TRIGGER RESEARCH CYCLE)"):
+            with st.spinner("Reprocessing Markets..."):
+                run_research_cycle()
+                st.rerun()
         
         st.divider()
         st.subheader("📊 Systematic Derivatives & ATM Strategy")
