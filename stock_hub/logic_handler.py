@@ -6,14 +6,19 @@ import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 import google.generativeai as genai
 import streamlit as st
+
 try:
     from google.oauth2.credentials import Credentials
 except ImportError:
     Credentials = None
-from dotenv import load_dotenv
-from stock_hub.kratos_engine import KratosEngine
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+from stock_hub.kratos_engine import KratosEngine
 
 class LocalBrainDB:
     def __init__(self, db_path=os.path.join("stock_hub", "brotherhood_data.db")):
@@ -54,13 +59,9 @@ def get_db_context():
         return f"Database context offline: {e}"
 
 def extract_ticker_from_prompt(prompt):
-    """
-    Parses prompt for known stock tickers or uppercase symbols.
-    """
     clean_text = prompt.upper().replace(".NS", "")
     words = re.findall(r'\b[A-Z0-9&-]{2,15}\b', clean_text)
     
-    # Common command words to ignore
     ignore_words = {
         "WHAT", "HOW", "WHY", "WHEN", "TELL", "GIVE", "SHOW", "ANALYSIS", "ANALYZE",
         "STOCK", "STOCKS", "PRICE", "TARGET", "STOP", "LOSS", "RISK", "TODAY",
@@ -75,9 +76,6 @@ def extract_ticker_from_prompt(prompt):
     return None
 
 def query_gemini(prompt):
-    """
-    Directly routes queries to Kratos AI Multi-Agent Engine with real-time SQL context injection.
-    """
     brain_db.save_message("user", prompt)
     ticker = extract_ticker_from_prompt(prompt)
     
@@ -116,7 +114,7 @@ def query_gemini(prompt):
             brain_db.save_message("assistant", response)
             return response
 
-    # Route 2: Broad Market / General Inquiries with Live SQLite Injection
+    # Route 2: Broad Market Inquiries with Live SQLite State
     api_key = None
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]

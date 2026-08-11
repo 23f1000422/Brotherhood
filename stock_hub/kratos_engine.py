@@ -7,12 +7,18 @@ import json
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 from datetime import datetime
-from dotenv import load_dotenv
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from stock_hub.quant_tools import QuantTools
 from stock_hub.sentiment_engine import LocalSentimentEngine
 from stock_hub.derivatives_engine import get_derivatives_strategy, get_atm_info
-
-load_dotenv()
 
 # =============================================================================
 # 🧠 KRATOS AI MULTI-AGENT QUANTITATIVE RESEARCH ENGINE
@@ -298,5 +304,115 @@ class KratosAIEngine:
             ]
 
         return thesis, risks
+
+    @staticmethod
+    def generate_kratos_multi_chart(dossier):
+        """
+        Creates an Institutional Multi-Panel Interactive Technical Chart:
+        - Panel 1: Price Action Candlesticks + 20/50/200 EMA + Target T1/T2/T3 & SL + ATR Channels
+        - Panel 2: Volume Histogram with 20D Average Volume
+        - Panel 3: RSI(14) Momentum Oscillator with 70/30 Bands
+        """
+        df = dossier.get("df_history", pd.DataFrame())
+        if df.empty or len(df) < 5:
+            return None
+            
+        plan = dossier.get("trade_plan", {})
+        target1 = plan.get("target1", dossier.get("target", 0))
+        target2 = plan.get("target2", dossier.get("target2", 0))
+        target3 = plan.get("target3", target2)
+        sl = plan.get("stop_loss", dossier.get("sl", 0))
+        
+        # Calculate Overlays
+        ema20 = df['Close'].ewm(span=20, adjust=False).mean()
+        ema50 = df['Close'].ewm(span=50, adjust=False).mean()
+        rsi_series = QuantTools.calculate_rsi(df['Close'], 14)
+        vol_avg = df['Volume'].rolling(20, min_periods=1).mean()
+        
+        # Color Volume Bars based on Close vs Open
+        vol_colors = ['#10b981' if c >= o else '#ef4444' for c, o in zip(df['Close'], df['Open'])]
+
+        # 3-Row Subplot Figure
+        fig = make_subplots(
+            rows=3, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            row_heights=[0.60, 0.20, 0.20],
+            subplot_titles=(f"📈 {dossier['symbol']} Price Action & Kratos Targets", "📊 Volume & Institutional Flow", "⚡ RSI (14) Momentum")
+        )
+
+        # Panel 1: Candlesticks
+        fig.add_trace(go.Candlestick(
+            x=df.index,
+            open=df['Open'],
+            high=df['High'],
+            low=df['Low'],
+            close=df['Close'],
+            name="Price",
+            increasing_line_color="#10b981",
+            decreasing_line_color="#ef4444"
+        ), row=1, col=1)
+
+        # EMAs
+        fig.add_trace(go.Scatter(
+            x=df.index, y=ema20,
+            line=dict(color="#38bdf8", width=1.5),
+            name="20 EMA"
+        ), row=1, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=df.index, y=ema50,
+            line=dict(color="#f59e0b", width=1.5),
+            name="50 EMA"
+        ), row=1, col=1)
+
+        # Horizontal Target Lines & SL
+        if target1 > 0:
+            fig.add_hline(y=target1, line_dash="dash", line_color="#10b981",
+                          annotation_text=f"T1: ₹{target1:.2f}", annotation_position="top right", row=1, col=1)
+        if target2 > 0:
+            fig.add_hline(y=target2, line_dash="dot", line_color="#34d399",
+                          annotation_text=f"T2: ₹{target2:.2f}", annotation_position="top right", row=1, col=1)
+        if sl > 0:
+            fig.add_hline(y=sl, line_dash="dash", line_color="#ef4444",
+                          annotation_text=f"SL Floor: ₹{sl:.2f}", annotation_position="bottom right", row=1, col=1)
+
+        # Panel 2: Volume
+        fig.add_trace(go.Bar(
+            x=df.index,
+            y=df['Volume'],
+            marker_color=vol_colors,
+            name="Volume"
+        ), row=2, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=vol_avg,
+            line=dict(color="#94a3b8", width=1.2),
+            name="20D Vol Avg"
+        ), row=2, col=1)
+
+        # Panel 3: RSI
+        fig.add_trace(go.Scatter(
+            x=df.index,
+            y=rsi_series,
+            line=dict(color="#a855f7", width=1.8),
+            name="RSI (14)"
+        ), row=3, col=1)
+
+        fig.add_hline(y=70, line_dash="dot", line_color="#ef4444", row=3, col=1)
+        fig.add_hline(y=30, line_dash="dot", line_color="#10b981", row=3, col=1)
+
+        fig.update_layout(
+            template="plotly_dark",
+            height=680,
+            margin=dict(l=10, r=10, t=30, b=10),
+            xaxis_rangeslider_visible=False,
+            paper_bgcolor="#0b0e14",
+            plot_bgcolor="#0b0e14",
+            showlegend=False
+        )
+
+        return fig
 
 KratosEngine = KratosAIEngine

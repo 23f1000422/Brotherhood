@@ -1,24 +1,16 @@
-# =============================================================================
-# 🧬 BROTHERHOOD QUANT TERMINAL & KRATOS AI PRODUCTION DEPENDENCIES
-# =============================================================================
+# Core Streamlit & Visualization
+streamlit>=1.35.0
+plotly>=5.18.0
 
-# Core Dashboard & UI
-streamlit>=1.40.0
-plotly>=5.20.0
+# Mathematical & Quantitative Analytics
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
 
-# Mathematical & Quantitative Computing
-numpy>=1.26.0
-pandas>=2.2.0
-scipy>=1.13.0
-
-# Deep Learning & NLP (Local FinBERT Sentiment Engine)
-torch>=2.2.0
-transformers>=4.40.0
-
-# Market Data Ingestion & Gateway
-yfinance>=0.2.50
+# Market Data Ingestion & API Gateway
+yfinance>=0.2.36
 requests>=2.31.0
 
-# Environment & AI Orchestration
+# Environment & Intelligence Layer
 python-dotenv>=1.0.0
-google-generativeai>=0.8.0
+google-generativeai>=0.5.0

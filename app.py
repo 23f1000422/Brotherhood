@@ -297,9 +297,9 @@ def main():
         # 5 Interactive Multi-Model Tabs
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "🏛️ Kratos AI Thesis & Execution Plan",
+            "📈 Kratos Multi-Panel Technical Chart",
             "🧠 FinBERT Sentiment Gauge",
             "⚡ Derivatives & Option Greeks",
-            "📈 Interactive Price Action Chart",
             "🚀 Upstox Gateway & Order Routing"
         ])
 
@@ -348,6 +348,14 @@ def main():
                 st.warning(f"• {rk}")
 
         with tab2:
+            st.markdown(f"#### 📈 Kratos Multi-Panel Institutional Chart: **{dossier['symbol']}**")
+            chart_fig = KratosEngine.generate_kratos_multi_chart(dossier)
+            if chart_fig:
+                st.plotly_chart(chart_fig, use_container_width=True)
+            else:
+                st.info("Insufficient chart telemetry to render multi-panel view.")
+
+        with tab3:
             st.markdown("#### 🧠 Local Neural & Lexicon Sentiment Analysis")
             sentiment = dossier.get('sentiment', {})
             s_score = sentiment.get('sentiment_score', 0.0)
@@ -374,7 +382,7 @@ def main():
                 else:
                     st.caption("Technical momentum baseline applied.")
 
-        with tab3:
+        with tab4:
             st.markdown("#### ⚡ Real-Time Black-Scholes Greeks & Strike Engine")
             deriv = dossier.get('derivatives', {})
             
@@ -405,57 +413,6 @@ def main():
             v_b1.metric("1x ATR Move", f"±₹{dossier['atr']:.2f}")
             v_b2.metric("Upper 1-ATR Target", f"₹{dossier['price'] + dossier['atr']:.2f}")
             v_b3.metric("Lower 1-ATR Target", f"₹{dossier['price'] - dossier['atr']:.2f}")
-
-        with tab4:
-            st.markdown("#### 📈 Interactive Candlestick Chart & Overlays")
-            df_hist = dossier.get('df_history', pd.DataFrame())
-            if not df_hist.empty:
-                fig = go.Figure()
-                
-                fig.add_trace(go.Candlestick(
-                    x=df_hist.index,
-                    open=df_hist['Open'],
-                    high=df_hist['High'],
-                    low=df_hist['Low'],
-                    close=df_hist['Close'],
-                    name='Price Action'
-                ))
-                
-                if len(df_hist) >= 10:
-                    ema_line = df_hist['Close'].ewm(span=20, adjust=False).mean()
-                    fig.add_trace(go.Scatter(
-                        x=df_hist.index, y=ema_line,
-                        line=dict(color='#f59e0b', width=1.5),
-                        name='20 EMA'
-                    ))
-
-                # Target T1 Line
-                fig.add_hline(
-                    y=plan['target1'],
-                    line_dash="dash",
-                    line_color="#10b981",
-                    annotation_text=f"Target T1: ₹{plan['target1']:.2f}",
-                    annotation_position="top right"
-                )
-                
-                # Stop Loss Line
-                fig.add_hline(
-                    y=plan['stop_loss'],
-                    line_dash="dash",
-                    line_color="#ef4444",
-                    annotation_text=f"SL: ₹{plan['stop_loss']:.2f}",
-                    annotation_position="bottom right"
-                )
-
-                fig.update_layout(
-                    template="plotly_dark",
-                    height=460,
-                    margin=dict(l=10, r=10, t=10, b=10),
-                    xaxis_rangeslider_visible=False,
-                    paper_bgcolor="#0b0e14",
-                    plot_bgcolor="#0b0e14"
-                )
-                st.plotly_chart(fig, use_container_width=True)
 
         with tab5:
             st.markdown("#### 🚀 Upstox Execution Gateway & Order Routing")
