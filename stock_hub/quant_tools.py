@@ -80,7 +80,7 @@ class QuantTools:
         high_close = np.abs(df_clean['High'] - df_clean['Close'].shift())
         low_close = np.abs(df_clean['Low'] - df_clean['Close'].shift())
         tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        return tr.rolling(window=period, min_periods=1).mean().fillna(method='bfill')
+        return tr.rolling(window=period, min_periods=1).mean().bfill().fillna(0.0)
 
     @staticmethod
     def calculate_pivots(df):
