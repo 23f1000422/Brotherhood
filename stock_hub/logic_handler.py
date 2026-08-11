@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 import pandas as pd
 import warnings
@@ -10,6 +11,7 @@ try:
 except ImportError:
     Credentials = None
 from dotenv import load_dotenv
+from stock_hub.kratos_engine import KratosEngine
 
 load_dotenv()
 
@@ -43,108 +45,122 @@ def get_db_context():
     try:
         db_path = os.path.join("stock_hub", "brotherhood_data.db")
         with sqlite3.connect(db_path) as conn:
-            query = "SELECT * FROM processed_watchlist WHERE Date = (SELECT MAX(Date) FROM processed_watchlist)"
+            query = "SELECT Ticker, Direction, Pattern, Price, Change_Pct, Target, SL, RR, RSI, Action FROM processed_watchlist WHERE Date = (SELECT MAX(Date) FROM processed_watchlist) LIMIT 12"
             df = pd.read_sql(query, conn)
             if not df.empty:
-                return "CURRENT DAILY STOCK WATCHLIST ARRAY:\n" + df.to_string(index=False)
+                return "ACTIVE QUANT WATCHLIST TELEMETRY:\n" + df.to_string(index=False)
             return "No current daily watchlist available."
     except Exception as e:
-        return f"Database access error: {e}"
+        return f"Database context offline: {e}"
+
+def extract_ticker_from_prompt(prompt):
+    """
+    Parses prompt for known stock tickers or uppercase symbols.
+    """
+    clean_text = prompt.upper().replace(".NS", "")
+    words = re.findall(r'\b[A-Z0-9&-]{2,15}\b', clean_text)
+    
+    # Common command words to ignore
+    ignore_words = {
+        "WHAT", "HOW", "WHY", "WHEN", "TELL", "GIVE", "SHOW", "ANALYSIS", "ANALYZE",
+        "STOCK", "STOCKS", "PRICE", "TARGET", "STOP", "LOSS", "RISK", "TODAY",
+        "MARKET", "NIFTY", "BANK", "OPTION", "CALL", "PUT", "BUY", "SELL", "HELP",
+        "TRAP", "SCORE", "KRATOS", "ORACLE", "STATUS", "DAILY", "CHART"
+    }
+    
+    for w in words:
+        if w not in ignore_words and len(w) >= 3:
+            return w
+            
+    return None
 
 def query_gemini(prompt):
     """
-    PA ARCHITECTURE: The Core Oracle decoupled locally using standard google-generativeai.
+    Directly routes queries to Kratos AI Multi-Agent Engine with real-time SQL context injection.
     """
+    brain_db.save_message("user", prompt)
+    ticker = extract_ticker_from_prompt(prompt)
+    
+    # Route 1: Target Stock Specific Multi-Agent Deep Audit
+    if ticker:
+        kratos = KratosEngine()
+        dossier = kratos.generate_kratos_dossier(ticker)
+        
+        if dossier.get("status") == "success":
+            plan = dossier['trade_plan']
+            flow = dossier['order_flow']
+            regime = dossier['regime']
+            deriv = dossier['derivatives']
+            sent = dossier['sentiment']
+            
+            response = (
+                f"### 🧬 KRATOS AI MULTI-AGENT DOSSIER: **{dossier['symbol']}**\n\n"
+                f"**Spot LTP:** ₹{dossier['price']:.2f} | **Bias:** `{dossier['direction']}`\n\n"
+                f"**🏛️ Quant Rationale:**\n> {dossier['thesis']}\n\n"
+                f"**🔍 Agent 1 (Order Flow & Trap Risk):**\n"
+                f"• State: **{flow['status']}**\n"
+                f"• Trap Risk: `{flow['trap_risk']}` | Volume Ratio: `{flow['vol_ratio']}x` | Flow Score: `{flow['flow_score']}/100`\n\n"
+                f"**🌐 Agent 2 (Market Regime):**\n"
+                f"• Regime: **{regime['market_regime']}** ({regime['trend_alignment']})\n"
+                f"• 200 EMA Floor: ₹{dossier['ema200']:.2f} ({'Above' if dossier['above_ema200'] else 'Below'})\n\n"
+                f"**🎯 Agent 3 (Execution Plan):**\n"
+                f"• Target T1: **₹{plan['target1']:.2f}** (R:R {plan['rr_t1']}x)\n"
+                f"• Target T2: **₹{plan['target2']:.2f}** (R:R {plan['rr_t2']}x)\n"
+                f"• Dynamic SL: **₹{plan['stop_loss']:.2f}** (Risk/Share: ₹{plan['risk_per_share']:.2f})\n\n"
+                f"**⚡ Agent 4 (Derivatives & Greeks):**\n"
+                f"• Strike: `{deriv.get('strike', 'N/A')}` ({deriv.get('premium', '')})\n"
+                f"• Delta (Δ): `{deriv.get('delta', 0):+.2f}` | Gamma: `{deriv.get('gamma', 0):.4f}` | Theta: `{deriv.get('theta', 0):.2f}`\n\n"
+                f"**🧠 Agent 5 (FinBERT Sentiment):**\n"
+                f"• Polarity: `{sent.get('overall_sentiment', 'Neutral')}` (Score: `{sent.get('sentiment_score', 0):+.2f}`)\n"
+            )
+            brain_db.save_message("assistant", response)
+            return response
+
+    # Route 2: Broad Market / General Inquiries with Live SQLite Injection
     api_key = None
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
-    except:
+    except Exception:
         api_key = os.environ.get("GOOGLE_API_KEY")
 
-    if api_key:
-        api_key = api_key.strip()
-
-    if not api_key:
-        return "System offline: Missing API Key."
-        
-    if api_key.startswith("AQ.") or api_key.startswith("ya29"):
-        creds = Credentials(api_key) if Credentials else None
-        genai.configure(credentials=creds, transport='rest')
-    else:
-        genai.configure(api_key=api_key, transport='rest')
-    
-    history_records = brain_db.get_history(limit=5)
-    context = "\n".join([f"{h[0]}: {h[1]}" for h in history_records])
-    
     db_state = get_db_context()
     
-    full_prompt = (
-        "You are the Brotherhood Oracle, a high-precision Systematic Momentum terminal. Read the SQL data provided and give professional, blunt, and practical financial advice based on MACD/RSI/EMA trends.\n"
-        f"CONTEXT HISTORY:\n{context}\n\n"
-        f"LIVE SQL DATABASE STATE:\n{db_state}\n\n"
-        f"USER: {prompt}\n\n"
-        "STRICT RULE: Do not use personal names or informal greetings. Data-centric responses only."
-    )
-    
-    try:
-        model = genai.GenerativeModel('gemini-flash-lite-latest')
-        brain_db.save_message("user", prompt)
-        response = model.generate_content(full_prompt)
-        answer = response.text.strip()
-        brain_db.save_message("assistant", answer)
-        return answer
-    except Exception as e:
-        return f"Oracle Error: {e}"
-
-def get_cross_domain_strategy():
-    """
-    KNOWLEDGE BRIDGE: Decoupled to query local sqlite.
-    """
-    try:
-        db_path = os.path.join("stock_hub", "brotherhood_data.db")
-        if not os.path.exists(db_path):
-            return "Oracle: Database uninitialized. Proceed with caution."
+    if api_key:
+        api_key = str(api_key).strip().strip("'").strip('"')
+        if api_key.startswith("AQ.") or api_key.startswith("ya29"):
+            creds = Credentials(api_key) if Credentials else None
+            genai.configure(credentials=creds, transport='rest')
+        else:
+            genai.configure(api_key=api_key, transport='rest')
             
-        with sqlite3.connect(db_path) as conn:
-            df = pd.read_sql("SELECT * FROM processed_watchlist WHERE Date = (SELECT MAX(Date) FROM processed_watchlist)", conn)
-            
-            total_potential = (df['Target'] - df['Price']).sum()
-            if total_potential > 200:
-                return f"Systematic Scan: Market shows value potential of ${round(total_potential,2)}+ based on current momentum benchmarks."
-    except:
-        pass
+        history_records = brain_db.get_history(limit=4)
+        context = "\n".join([f"{h[0]}: {h[1]}" for h in history_records])
         
-    return "Proprietary Momentum Scanner: Monitoring for breakout triggers."
-
-def fetch_market_pulse():
-    import yfinance as yf
-    indices = {
-        "^NSEI": "Nifty 50",
-        "^NSEBANK": "Bank Nifty",
-        "^BSESN": "Sensex"
-    }
-    results = []
-    for ticker, name in indices.items():
+        full_prompt = (
+            "You are Kratos Oracle, the Lead Quantitative AI Architect for the Brotherhood Terminal.\n"
+            "Answer the user query using the live quantitative telemetry and database state below.\n"
+            "Be data-dense, professional, precise, and practical.\n\n"
+            f"LIVE SQL DATABASE CONTEXT:\n{db_state}\n\n"
+            f"USER QUERY: {prompt}\n"
+        )
         try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="5d")
-            if len(hist) >= 2:
-                last_close = hist['Close'].iloc[-1]
-                prev_close = hist['Close'].iloc[-2]
-                delta_val = last_close - prev_close
-                delta_pct = (delta_val / prev_close) * 100
-                delta_sign = "+" if delta_val > 0 else ""
-                results.append({
-                    "symbol": ticker,
-                    "name": name,
-                    "value": last_close,
-                    "delta_val": delta_val,
-                    "delta_pct": round(delta_pct, 2)
-                })
-        except Exception as e:
-            # Silent fallback for network latency
+            model = genai.GenerativeModel('gemini-flash-lite-latest')
+            res = model.generate_content(full_prompt)
+            answer = res.text.strip()
+            brain_db.save_message("assistant", answer)
+            return answer
+        except Exception:
             pass
-    return results
+
+    # Deterministic Fallback Market Briefing
+    fallback_resp = (
+        f"### 🧬 KRATOS ORACLE TELEMETRY BRIEFING\n\n"
+        f"**Live Database State:**\n```\n{db_state}\n```\n"
+        f"💡 **Tip:** Mention any specific ticker (e.g. *'Analyze SBIN'*, *'What is the trap risk on RELIANCE?'*) "
+        f"to trigger full Kratos 5-Agent multi-model research."
+    )
+    brain_db.save_message("assistant", fallback_resp)
+    return fallback_resp
 
 def fetch_sector_performance():
     import yfinance as yf
@@ -160,12 +176,12 @@ def fetch_sector_performance():
     for ticker, name in sectors.items():
         try:
             t = yf.Ticker(ticker)
-            prices = t.history(period="5d") # Buffer for weekends
+            prices = t.history(period="5d", auto_adjust=False)
             if len(prices) >= 2:
-                # basis: (Closing Price Today / Closing Price Previous Session) - 1
                 change = ((prices['Close'].iloc[-1] - prices['Close'].iloc[-2]) / prices['Close'].iloc[-2]) * 100
                 results.append({"Sector": name, "Performance (%)": round(change, 2)})
-        except: pass
+        except Exception:
+            pass
     return pd.DataFrame(results)
 
 def fetch_trending_tickers():
@@ -173,115 +189,12 @@ def fetch_trending_tickers():
         db_path = os.path.join("stock_hub", "brotherhood_data.db")
         with sqlite3.connect(db_path) as conn:
             query = """
-                SELECT Ticker, Price, Volume, Change_Pct 
-                FROM raw_signals 
-                WHERE Date = (SELECT MAX(Date) FROM raw_signals)
-                ORDER BY Volume DESC LIMIT 5
-            """
-            df = pd.read_sql(query, conn)
-            if not df.empty: return df
-            # Fallback for fresh DB: Mock data for visualization
-            return pd.DataFrame([
-                {"Ticker": "NIFTY_P", "Price": 22450, "Volume": 500000, "Change_Pct": 1.2},
-                {"Ticker": "BANK_P", "Price": 48200, "Volume": 350000, "Change_Pct": -0.5},
-                {"Ticker": "IT_P", "Price": 36000, "Volume": 420000, "Change_Pct": 0.8},
-            ])
-    except:
-        return pd.DataFrame()
-
-def fetch_top_movers():
-    try:
-        db_path = os.path.join("stock_hub", "brotherhood_data.db")
-        with sqlite3.connect(db_path) as conn:
-            query = """
                 SELECT Ticker, Price, Change_Pct 
-                FROM raw_signals 
-                WHERE Date = (SELECT MAX(Date) FROM raw_signals)
-                ORDER BY Change_Pct DESC LIMIT 5
+                FROM processed_watchlist 
+                WHERE Date = (SELECT MAX(Date) FROM processed_watchlist)
+                ORDER BY ABS(Change_Pct) DESC LIMIT 5
             """
             df = pd.read_sql(query, conn)
             return df
-    except:
+    except Exception:
         return pd.DataFrame()
-
-def get_mf_returns_table():
-    import yfinance as yf
-    from datetime import datetime, timedelta
-    mf_map = {
-        '0P0000XW8F.BO': 'SBI Bluechip Fund',
-        '0P0000XW95.BO': 'HDFC Top 100 Fund',
-        '0P0000XW9L.BO': 'ICICI Pru Bluechip',
-        '0P0000XW9M.BO': 'Nippon India Large Cap',
-        '0P0000XWA0.BO': 'UTI Mastershare Fund'
-    }
-    
-    rows = []
-    for ticker, name in mf_map.items():
-        try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="max")
-            if hist.empty: continue
-            
-            curr = hist['Close'].iloc[-1]
-            
-            def calc_ret(years):
-                days = int(years * 365)
-                # target_date approx
-                if len(hist) > days:
-                    past_val = hist['Close'].iloc[-(days+1)]
-                    ret = ((curr - past_val) / past_val) * 100
-                    return f"{round(ret, 2)}%"
-                return "N/A"
-            
-            rows.append({
-                "Fund Name": name,
-                "Current NAV": round(curr, 2),
-                "1Y": calc_ret(1),
-                "3Y": calc_ret(3),
-                "5Y": calc_ret(5),
-                "10Y": calc_ret(10),
-                "15Y": calc_ret(15)
-            })
-        except: pass
-    return pd.DataFrame(rows)
-
-def generate_linkedin_content(content_type="market"):
-    import streamlit as st
-    api_key = None
-    try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-    except:
-        api_key = os.environ.get("GOOGLE_API_KEY")
-
-    if api_key:
-        api_key = api_key.strip().strip("'").strip('"')
-
-    if not api_key: return "API Key Missing."
-    
-    if api_key.startswith("AQ.") or api_key.startswith("ya29"):
-        creds = Credentials(api_key) if Credentials else None
-        genai.configure(credentials=creds, transport='rest')
-    else:
-        genai.configure(api_key=api_key, transport='rest')
-    model = genai.GenerativeModel('gemini-flash-lite-latest')
-    
-    db_state = get_db_context()
-    
-    if content_type == "market":
-        prompt = (
-            "Draft a professional LinkedIn post based on this market data. "
-            "Highlight the top 'Prime O-L Momentum' stocks and mention general sectoral trends. "
-            "Use a professional, insight-driven tone. Include hashtags #Investing #FinTech #MarketInsights.\n\n"
-            f"DATA:\n{db_state}"
-        )
-    else:
-        prompt = (
-            "Draft a professional LinkedIn post about Mutual Fund educational trends and the importance of SIP/Long-term investing. "
-            "Make it informative and engaging. Include hashtags #MutualFunds #SIP #LongTermInvesting #FinancialLiteracy."
-        )
-        
-    try:
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"Generation Error: {e}"

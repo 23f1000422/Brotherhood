@@ -2,306 +2,492 @@ import streamlit as st
 import os
 import sys
 import pandas as pd
-import json
 import sqlite3
-from datetime import datetime, timedelta
+import plotly.graph_objects as go
 
 # --- RESILIENT PROJECT PATHING ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-try:
-    from stock_hub.logic_handler import (
-        query_gemini, brain_db, 
-        get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
-    )
-    from stock_hub.pulse_engine import fetch_market_pulse_standalone
-    from stock_hub.stock_engine import run_research_cycle
-except ImportError as e:
-    st.error(f"System Boot Failure (Pathing): {e}")
-    # Fallback for some cloud environments
-    sys.path.insert(0, os.path.join(PROJECT_ROOT, "stock_hub"))
-    from logic_handler import (
-        query_gemini, brain_db, 
-        get_mf_returns_table, fetch_sector_performance, fetch_trending_tickers
-    )
-    from pulse_engine import fetch_market_pulse_standalone
-    from stock_engine import run_research_cycle
+from stock_hub.stock_engine import run_research_cycle
+from stock_hub.kratos_engine import KratosEngine, RiskExecutionArchitect
+from stock_hub.upstox_engine import upstox
+from stock_hub.pulse_engine import fetch_market_pulse_standalone
+from stock_hub.logic_handler import query_gemini, brain_db
 
-import plotly.express as px # type: ignore
-from dotenv import load_dotenv
+st.set_page_config(
+    page_title="Brotherhood Quant Cockpit | Kratos AI",
+    page_icon="🧬",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-load_dotenv()
-# --- CACHE CLEARANCE FOR PRODUCTION ---
-if 'cache_cleared' not in st.session_state:
-    st.cache_data.clear()
-    st.cache_resource.clear()
-    st.session_state.cache_cleared = True
-
-st.set_page_config(page_title="Indigenous AI Cockpit", page_icon="🧬", layout="wide")
-
-TICKER_MAP = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
-
-# --- UI STYLING ---
+# --- ADVANCED QUANT COCKPIT CSS ---
 st.markdown("""
     <style>
-    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
-    .status-card { background-color: #1a1c24; border: 1px solid #333; padding: 1.2rem; border-radius: 10px; }
+    /* Dark Terminal Background */
+    .stApp {
+        background-color: #0b0e14;
+        color: #e2e8f0;
+    }
+    
+    /* Sleek Cards */
+    .quant-card {
+        background: linear-gradient(145deg, #151a23 0%, #11141c 100%);
+        border: 1px solid #232936;
+        border-radius: 10px;
+        padding: 1.1rem;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+    
+    .quant-card-highlight {
+        background: linear-gradient(145deg, #182232 0%, #121924 100%);
+        border: 1px solid #2563eb;
+        border-radius: 10px;
+        padding: 1.1rem;
+        box-shadow: 0 4px 16px rgba(37, 99, 235, 0.15);
+    }
+    
+    .kratos-badge {
+        background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+        color: #ffffff;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        display: inline-block;
+    }
+    
+    /* Pill Badges */
+    .badge-bullish {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+        border: 1px solid #10b981;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        display: inline-block;
+    }
+    
+    .badge-bearish {
+        background-color: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+        border: 1px solid #ef4444;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.85rem;
+        display: inline-block;
+    }
+    
+    .badge-neutral {
+        background-color: rgba(148, 163, 184, 0.15);
+        color: #94a3b8;
+        border: 1px solid #64748b;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        display: inline-block;
+    }
+
+    /* Buttons */
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        color: #ffffff;
+        border: none;
+        transition: all 0.2s ease;
+    }
+    .stButton>button:hover {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        box-shadow: 0 0 12px rgba(59, 130, 246, 0.5);
+    }
+    
+    /* Metrics */
+    div[data-testid="stMetricValue"] {
+        font-size: 1.45rem !important;
+        font-weight: 800 !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
+TICKER_MAP = {"^NSEI": "NIFTY 50", "^NSEBANK": "BANK NIFTY", "^BSESN": "SENSEX", "^CNXIT": "IT SECTOR"}
+
+def load_screener_data():
+    db_path = os.path.join(PROJECT_ROOT, "stock_hub", "brotherhood_data.db")
+    if not os.path.exists(db_path):
+        return pd.DataFrame()
+    try:
+        with sqlite3.connect(db_path) as conn:
+            query = "SELECT * FROM processed_watchlist WHERE Date = (SELECT MAX(Date) FROM processed_watchlist)"
+            df = pd.read_sql(query, conn)
+            return df
+    except Exception:
+        return pd.DataFrame()
+
 def main():
-    # --- MASTER AGENT CLEAN SLATE ---
-    if "chat_purged" not in st.session_state:
-        brain_db.purge_history()
-        st.session_state.messages = [] 
-        st.session_state.chat_purged = True
-        st.rerun()
-
-    # --- AUTO-REFRESH LOGIC (CRITICAL) ---
-    ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    today_str = ist_now.strftime("%Y-%m-%d")
-    
-    # Check if DB is stale on launch
-    db_path = os.path.join("stock_hub", "brotherhood_data.db")
-    if os.path.exists(db_path):
-        try:
-            with sqlite3.connect(db_path) as conn:
-                df_date = pd.read_sql("SELECT MAX(Date) as max_date FROM processed_watchlist", conn)
-                latest_db_date = df_date['max_date'].iloc[0] if not df_date.empty else None
-                
-                # If market is open (or it's just a new day) and we haven't run today
-                if latest_db_date != today_str and "auto_run_attempted" not in st.session_state:
-                    st.session_state.auto_run_attempted = True
-                    with st.spinner("🌞 New Day Detected. Initializing Market Terminal..."):
-                        run_research_cycle()
-                        st.rerun()
-        except: pass
-    else:
-        # No DB at all, force run
-        if "auto_run_attempted" not in st.session_state:
-            st.session_state.auto_run_attempted = True
-            with st.spinner("🚀 Bootstrapping Terminal Database..."):
+    # --- AUTO-BOOTSTRAP CHECK ---
+    if "screener_df" not in st.session_state:
+        df = load_screener_data()
+        if df.empty:
+            with st.spinner("🚀 Bootstrapping Brotherhood & Kratos AI Quant Engine..."):
                 run_research_cycle()
-                st.rerun()
+                df = load_screener_data()
+        st.session_state.screener_df = df
 
-    # --- SIDEBAR: MASTER ORACLE ---
-    st.sidebar.title("🛰️ MASTER ORACLE")
-    
-    st.sidebar.markdown("---")
-    chat_container = st.sidebar.container(height=350, border=True)
-    
-    history = brain_db.get_history(limit=10)
-    for role, content in history:
-        with chat_container.chat_message(role):
-            st.markdown(content)
-
-    user_input = st.sidebar.chat_input("Speak to the Source...")
-    if user_input:
-        with chat_container.chat_message("user"):
-            st.markdown(user_input)
+    # --- SIDEBAR: MASTER ORACLE TERMINAL (KRATOS AI CONNECTED) ---
+    with st.sidebar:
+        st.title("🛰️ MASTER ORACLE")
+        st.caption("Direct Kratos AI Multi-Agent & SQL State Stream")
+        st.markdown("---")
         
-        query_gemini(user_input)
-        
-        # We also clear session history to ensure clean UI
-        if "messages" in st.session_state: st.session_state.messages = []
-        st.rerun()
+        chat_container = st.container(height=340, border=True)
+        history = brain_db.get_history(limit=8)
+        for role, content in history:
+            with chat_container.chat_message(role):
+                st.markdown(content)
 
-    tabs = st.tabs(["🖥️ MARKET TERMINAL", "🚀 STRATEGY & CONTENT HUB"])
-
-    with tabs[0]:
-        st.header("🖥️ Proprietary Market Terminal (v1.2.1-stable)")
-        db_path = os.path.join("stock_hub", "brotherhood_data.db")
-        
-        # --- MARKET PULSE INDICES (LIVE REFRESH) ---
-        try:
-            pulse_data = fetch_market_pulse_standalone()
-            if pulse_data:
-                pulse_cols = st.columns(len(pulse_data))
-                for idx, p in enumerate(pulse_data):
-                    with pulse_cols[idx]:
-                        # Defensive Key Access to handle Cache Latency
-                        raw_ticker = p.get('symbol', p.get('name', 'N/A'))
-                        m_ticker = str(raw_ticker).upper()
-                        display_name = TICKER_MAP.get(m_ticker, p.get('name', raw_ticker))
-                        
-                        val_v = float(p.get('value', 0))
-                        if 'delta_val' in p:
-                            delta_display = f"{p['delta_val']:+,.2f} ({p['delta_pct']}% )"
-                        else:
-                            delta_display = p.get('delta', 'N/A')
-
-                        st.metric(label=display_name, value=f"{val_v:,.2f}", delta=delta_display)
-            st.markdown("---")
-        except Exception as pulse_err:
-            st.warning(f"Market Pulse Latency: {pulse_err}")
-
-        if os.path.exists(db_path):
-            try:
-                with sqlite3.connect(db_path) as conn:
-                    latest_date_query = "SELECT MAX(Date) as max_date FROM processed_watchlist"
-                    df_date = pd.read_sql(latest_date_query, conn)
-                    latest_date = df_date['max_date'].iloc[0] if not df_date.empty and not pd.isna(df_date['max_date'].iloc[0]) else None
-                    
-                    if latest_date:
-                        ts_query = f"SELECT MAX(Timestamp) as max_ts FROM processed_watchlist WHERE Date = '{latest_date}'"
-                        try:
-                            df_ts = pd.read_sql(ts_query, conn)
-                            latest_ts = df_ts['max_ts'].iloc[0] if not df_ts.empty and not pd.isna(df_ts['max_ts'].iloc[0]) else "N/A"
-                        except:
-                            latest_ts = "N/A"
-                            
-                        st.markdown(f"**Terminal Sync: {latest_ts}**")
-                        
-                        query = f"SELECT * FROM processed_watchlist WHERE Date = '{latest_date}'"
-                        df = pd.read_sql(query, conn)
-                        
-                        col1, col2 = st.columns([3, 1])
-                        with col1:
-                            if not df.empty:
-                                top_ticker = df.iloc[0]['Ticker']
-                                top_review = df.iloc[0]['Agent_Review']
-                                st.success(f"**Top Momentum Pick: {top_ticker}**")
-                                st.markdown(f"> {top_review}")
-                            else:
-                                st.info("No momentum picks identified for the current session.")
-                        with col2:
-                            st.metric("P-OL Tickers", len(df))
-                            
-                        st.write(f"### 📈 Watchlist Telemetry ({latest_date})")
-                        # Ticker Aliasing for Dataframe Display (Robust Mapping)
-                        if not df.empty and 'Ticker' in df.columns:
-                            mapping = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
-                            df['Ticker'] = df['Ticker'].map(mapping).fillna(df['Ticker'])
-                        st.dataframe(df, use_container_width=True)
-                    else:
-                        st.info("Database initialized but empty. Please trigger manual refresh if today's data is missing.")
-            except Exception as e:
-                st.error(f"Database Read Error: {e}")
-        else:
-            st.info("Searching for Fresh Data... Engine operates locally.")
-
-        st.write("---")
-        if st.button("🚀 MANUAL REFRESH (TRIGGER RESEARCH CYCLE)"):
-            with st.spinner("Reprocessing Markets..."):
-                run_research_cycle()
-                st.rerun()
-
-        
-        st.divider()
-        st.subheader("📊 Systematic Derivatives & ATM Strategy")
-        if os.path.exists(db_path):
-            try:
-                with sqlite3.connect(db_path) as conn:
-                    deriv_date_query = "SELECT MAX(Date) as max_date FROM derivatives"
-                    df_d_date = pd.read_sql(deriv_date_query, conn)
-                    latest_d_date = df_d_date['max_date'].iloc[0] if not df_d_date.empty and not pd.isna(df_d_date['max_date'].iloc[0]) else None
-                    if latest_d_date:
-                        deriv_query = f"SELECT * FROM derivatives WHERE Date = '{latest_d_date}'"
-                        opt_df = pd.read_sql(deriv_query, conn)
-                        if not opt_df.empty and 'Ticker' in opt_df.columns:
-                            mapping = {"^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex", "^CNXIT": "IT Sector"}
-                            opt_df['Ticker'] = opt_df['Ticker'].str.upper().map(mapping).fillna(opt_df['Ticker'])
-                        st.dataframe(opt_df, use_container_width=True)
-                    else:
-                        st.info("Derivatives analytics pending research cycle.")
-            except Exception as e:
-                st.error(f"Error loading Derivatives: {e}")
-
-        st.divider()
-        st.subheader("📚 Mutual Fund Insights")
-        mf_data = get_mf_returns_table()
-        if not mf_data.empty:
-            st.dataframe(mf_data, use_container_width=True, hide_index=True)
-            st.caption("Annualized performance benchmarks | Data source: Yahoo Finance")
-        else:
-            st.info("MF Performance telemetry offline.")
+        user_input = st.chat_input("Ask Oracle / Kratos (e.g. 'Analyze SBIN')...")
+        if user_input:
+            with chat_container.chat_message("user"):
+                st.markdown(user_input)
+            with chat_container.chat_message("assistant"):
+                with st.spinner("Kratos Multi-Agent System synthesizing telemetry..."):
+                    ans = query_gemini(user_input)
+                    st.markdown(ans)
+            st.rerun()
 
         st.markdown("---")
-        with st.expander("📖 SYSTEMATIC STRATEGY GUARDRAILS"):
-            st.markdown("""
-            ### 🎯 Core Momentum Rules (Prime O-L)
-            1. **Prime O-L (Open=Low/High)**: We only scalp tickers where the session open is equal to the low (Bullish) or high (Bearish) with a 0.05% tolerance.
-            2. **The EMA200 Guard**: Never enter a BUY position if the price is below the 200-Day EMA. Momentum must be systemic.
-            3. **RSI Precision**: 
-               - **BUY**: RSI < 65 (Room to move)
-               - **AVOID**: RSI > 75 (Overbought danger zone)
-            4. **Exit Strategy**:
-               - **Target**: Fibonacci 1.618 or Pivot R1.
-               - **Stop Loss**: ATR-based dynamic floor (1.5x ATR).
-            """)
+        st.markdown("### ⚙️ System Architecture")
+        st.markdown("• **Tier 1:** Pure Math Screener (0ms LLM)")
+        st.markdown("• **Tier 2:** Kratos AI Multi-Agent Engine")
+        st.markdown("• **Gateway:** Upstox API v2 & Paper Router")
+        st.markdown("• **Greeks:** Closed-Form Black-Scholes")
 
-    with tabs[1]:
-        st.header("🚀 Strategy & Content Hub")
+    # --- TOP HEADER & MARKET PULSE BAR ---
+    st.markdown("## 🧬 BROTHERHOOD QUANTITATIVE COCKPIT")
+    st.caption("⚡ Powered by Kratos AI Multi-Agent Research & Upstox Execution Gateway")
+
+    try:
+        pulse_data = fetch_market_pulse_standalone()
+        if pulse_data:
+            p_cols = st.columns(len(pulse_data))
+            for i, p in enumerate(pulse_data):
+                with p_cols[i]:
+                    sym = p.get('symbol', '')
+                    name = TICKER_MAP.get(sym, p.get('name', sym))
+                    val = float(p.get('value', 0))
+                    d_val = p.get('delta_val', 0)
+                    d_pct = p.get('delta_pct', 0)
+                    delta_str = f"{d_val:+,.2f} ({d_pct:+0.2f}%)"
+                    st.metric(label=name, value=f"₹{val:,.2f}", delta=delta_str)
+    except Exception:
+        pass
+
+    st.markdown("---")
+
+    # =========================================================================
+    # TIER 1 (TOP): LIVE QUANT SCREENER
+    # =========================================================================
+    st.markdown("### 🏛️ TIER 1: LIVE QUANT SCREENER (High-High / Low-Low & Prime O-L)")
+    st.caption("⚡ Strict Mathematical Filtering (Zero False-Positives) • Direct Raw NSE Price Feeds")
+
+    col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([3, 1.5, 1.5])
+    
+    with col_ctrl1:
+        direction_filter = st.radio(
+            "Signal Filter:",
+            ["🌐 ALL BREAKOUTS", "🟢 BULLISH (Prime O=L / Gap Up)", "🔻 BEARISH (Prime O=H / Gap Down)"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+
+    with col_ctrl3:
+        if st.button("🔄 RESCAN BASKET NOW"):
+            with st.spinner("Executing High-Speed Multithreaded Quant Scan..."):
+                run_research_cycle()
+                st.session_state.screener_df = load_screener_data()
+                st.rerun()
+
+    df_screener = st.session_state.get("screener_df", pd.DataFrame())
+
+    if not df_screener.empty:
+        if "BULLISH" in direction_filter:
+            filtered_df = df_screener[df_screener['Direction'] == 'BULLISH']
+        elif "BEARISH" in direction_filter:
+            filtered_df = df_screener[df_screener['Direction'] == 'BEARISH']
+        else:
+            filtered_df = df_screener
+
+        display_cols = ['Ticker', 'Direction', 'Pattern', 'Price', 'Change_Pct', 'Day_Range', 'Target', 'SL', 'RR', 'RSI', 'EMA200', 'Action']
+        avail_cols = [c for c in display_cols if c in filtered_df.columns]
         
-        # Row 1: Analytics
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("📊 Sectoral Performance")
-            sector_df = fetch_sector_performance()
-            if not sector_df.empty:
-                st.bar_chart(sector_df.set_index("Sector"))
-                st.markdown("> **Basis**: Daily Pct Change.")
-            else:
-                st.info("Sector telemetry pending.")
+        st.dataframe(
+            filtered_df[avail_cols],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Price": st.column_config.NumberColumn("Spot LTP (₹)", format="₹%.2f"),
+                "Change_Pct": st.column_config.NumberColumn("Change (%)", format="%+0.2f%%"),
+                "Day_Range": st.column_config.TextColumn("Day Range (L - H)"),
+                "Target": st.column_config.NumberColumn("Tactical Target (₹)", format="₹%.2f"),
+                "SL": st.column_config.NumberColumn("Dynamic SL (₹)", format="₹%.2f"),
+                "RR": st.column_config.NumberColumn("R:R Ratio", format="%.2fx"),
+                "RSI": st.column_config.NumberColumn("RSI (14)", format="%.1f"),
+                "EMA200": st.column_config.NumberColumn("200 EMA Floor", format="₹%.1f"),
+                "Action": st.column_config.TextColumn("System Action")
+            }
+        )
+    else:
+        st.info("No current session breakout signals. Click 'RESCAN BASKET NOW' to refresh.")
+
+    st.markdown("---")
+
+    # =========================================================================
+    # TIER 2 (BOTTOM): KRATOS AI MULTI-AGENT RESEARCH & UPSTOX GATEWAY
+    # =========================================================================
+    st.markdown("### 🔬 TIER 2: KRATOS AI MULTI-AGENT RESEARCH & EXECUTION GATEWAY")
+    st.caption("Institutional Quantitative Analysis: Order Flow Trap Audit + Sector Regime + Multi-Target Plan + Upstox Router")
+
+    candidate_tickers = df_screener['Ticker'].tolist() if not df_screener.empty else ['RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK']
+    
+    c_sel1, c_sel2 = st.columns([2, 4])
+    with c_sel1:
+        selected_ticker = st.selectbox("Select Target Stock for Kratos Deep Dossier:", candidate_tickers, index=0)
+
+    kratos_engine = KratosEngine()
+    
+    with st.spinner(f"Kratos AI Agents conducting multi-model audit on {selected_ticker}..."):
+        dossier = kratos_engine.generate_kratos_dossier(selected_ticker)
+
+    if dossier.get("status") == "success":
+        dir_class = "badge-bullish" if dossier['direction'] == "BULLISH" else "badge-bearish"
+        plan = dossier['trade_plan']
+        flow = dossier['order_flow']
+        regime = dossier['regime']
         
-        with col2:
-            st.subheader("🔥 Volume Sentiment (Trending)")
-            trend_df = fetch_trending_tickers()
-            if not trend_df.empty:
-                # Color coding: Green for Bullish, Red for Bearish
-                # We assume Trend contains 'Bullish' or 'Bearish'
-                # Add a dummy color column
-                trend_df['Color'] = trend_df['Change_Pct'].apply(lambda x: 'Positive' if x >= 0 else 'Negative')
-                fig = px.bar(trend_df, x='Ticker', y='Volume', color='Color',
-                             color_discrete_map={'Positive': '#228B22', 'Negative': '#DC143C'},
-                             height=300)
-                fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0))
+        st.markdown(f"""
+            <div class="quant-card-highlight">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="font-size: 1.55rem; font-weight: 800; margin-right: 12px;">{dossier['symbol']}</span>
+                        <span class="{dir_class}">{dossier['direction']}</span>
+                        <span class="kratos-badge" style="margin-left: 8px;">KRATOS AI AUDITED</span>
+                    </div>
+                    <div style="font-size: 1.4rem; font-weight: 800; color: #38bdf8;">
+                        Spot LTP: ₹{dossier['price']:.2f}
+                    </div>
+                </div>
+                <div style="margin-top: 12px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 0.95rem;">
+                    <div>🎯 <b>Target T1:</b> ₹{plan['target1']:.2f}</div>
+                    <div>🛡️ <b>Dynamic SL:</b> ₹{plan['stop_loss']:.2f}</div>
+                    <div>⚖️ <b>Risk:Reward (T1):</b> {plan['rr_t1']:.2f}x</div>
+                    <div>📊 <b>Daily ATR:</b> ₹{dossier['atr']:.2f}</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+        # 5 Interactive Multi-Model Tabs
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
+            "🏛️ Kratos AI Thesis & Execution Plan",
+            "🧠 FinBERT Sentiment Gauge",
+            "⚡ Derivatives & Option Greeks",
+            "📈 Interactive Price Action Chart",
+            "🚀 Upstox Gateway & Order Routing"
+        ])
+
+        with tab1:
+            st.markdown("#### 📝 Institutional Quantitative Rationale")
+            st.markdown(f"""
+                <div class="quant-card">
+                    <p style="font-size: 1.05rem; line-height: 1.6; margin: 0;">
+                        {dossier['thesis']}
+                    </p>
+                </div>
+            """, unsafe_allow_html=True)
+
+            col_ag1, col_ag2 = st.columns(2)
+            with col_ag1:
+                st.markdown("#### 🔍 Agent 1: Order Flow & Trap Audit")
+                st.markdown(f"""
+                    <div class="quant-card">
+                        <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">ORDER FLOW STATE</p>
+                        <h4 style="margin: 5px 0; color: #38bdf8;">{flow['status']}</h4>
+                        <p style="margin: 0;"><b>Trap Risk:</b> {flow['trap_risk']}</p>
+                        <p style="margin: 0;"><b>Volume Ratio:</b> {flow['vol_ratio']}x | <b>Flow Score:</b> {flow['flow_score']}/100</p>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            with col_ag2:
+                st.markdown("#### 🌐 Agent 2: Sector & Macro Regime")
+                st.markdown(f"""
+                    <div class="quant-card">
+                        <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">MARKET REGIME</p>
+                        <h4 style="margin: 5px 0; color: #10b981;">{regime['market_regime']}</h4>
+                        <p style="margin: 0;"><b>Trend Alignment:</b> {regime['trend_alignment']}</p>
+                        <p style="margin: 0;"><b>EMA20:</b> ₹{regime['ema20']} | <b>EMA50:</b> ₹{regime['ema50']} | <b>EMA200:</b> ₹{regime['ema200']}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("#### 🎯 Execution Plan & Multi-Target Scaling")
+            c_t1, c_t2, c_t3, c_sl = st.columns(4)
+            c_t1.metric("Target T1 (1.5x ATR)", f"₹{plan['target1']:.2f}", f"R:R {plan['rr_t1']}x")
+            c_t2.metric("Target T2 (2.5x ATR)", f"₹{plan['target2']:.2f}", f"R:R {plan['rr_t2']}x")
+            c_t3.metric("Target T3 (Extended)", f"₹{plan['target3']:.2f}", "Runner")
+            c_sl.metric("Dynamic SL Floor", f"₹{plan['stop_loss']:.2f}", f"Risk: ₹{plan['risk_per_share']:.2f}")
+
+            st.markdown("#### ⚠️ Structural Execution Risks")
+            for rk in dossier.get('key_risks', []):
+                st.warning(f"• {rk}")
+
+        with tab2:
+            st.markdown("#### 🧠 Local Neural & Lexicon Sentiment Analysis")
+            sentiment = dossier.get('sentiment', {})
+            s_score = sentiment.get('sentiment_score', 0.0)
+            overall = sentiment.get('overall_sentiment', 'NEUTRAL')
+            
+            s_col1, s_col2 = st.columns([2, 4])
+            with s_col1:
+                badge = "badge-bullish" if overall == "BULLISH" else ("badge-bearish" if overall == "BEARISH" else "badge-neutral")
+                st.markdown(f"""
+                    <div class="quant-card" style="text-align: center;">
+                        <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">AGGREGATE SENTIMENT</p>
+                        <h2 style="margin: 6px 0;"><span class="{badge}">{overall}</span></h2>
+                        <h3 style="margin: 0;">Polarity: {s_score:+.2f}</h3>
+                        <p style="margin-top: 8px; font-size: 0.75rem; color: #64748b;">FinBERT Neural Polarity Gauge</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            with s_col2:
+                st.markdown("**Analyzed News Headlines & Neural Polarities:**")
+                all_scores = sentiment.get('all_scores', [])
+                if all_scores:
+                    for item in all_scores:
+                        st.markdown(f"• **[{item['sentiment']}]** Polarity: `{item['score']:+.2f}` | Confidence: `{item['confidence']*100:.0f}%` ({item['engine']})")
+                else:
+                    st.caption("Technical momentum baseline applied.")
+
+        with tab3:
+            st.markdown("#### ⚡ Real-Time Black-Scholes Greeks & Strike Engine")
+            deriv = dossier.get('derivatives', {})
+            
+            d_col1, d_col2 = st.columns([2, 3])
+            with d_col1:
+                st.markdown(f"""
+                    <div class="quant-card">
+                        <p style="margin: 0; font-size: 0.85rem; color: #94a3b8;">RECOMMENDED STRIKE</p>
+                        <h2 style="color: #38bdf8; margin: 5px 0;">{deriv.get('strike', 'N/A')}</h2>
+                        <p style="margin: 0; font-weight: 700;">Est. Premium: {deriv.get('premium', 'N/A')}</p>
+                        <p style="margin-top: 8px; font-size: 0.85rem; color: #cbd5e1;">{deriv.get('reason', '')}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            with d_col2:
+                g_c1, g_c2, g_c3 = st.columns(3)
+                g_c1.metric("Delta (Δ)", f"{deriv.get('delta', 0):+.2f}")
+                g_c2.metric("Gamma (Γ)", f"{deriv.get('gamma', 0):.4f}")
+                g_c3.metric("Theta (Θ)", f"{deriv.get('theta', 0):.2f}/day")
+                
+                g_c4, g_c5, g_c6 = st.columns(3)
+                g_c4.metric("Vega (V)", f"{deriv.get('vega', 0):.2f}")
+                g_c5.metric("Implied Vol (IV)", f"{deriv.get('iv_pct', 20):.1f}%")
+                g_c6.metric("Deterministic PCR", f"{deriv.get('pcr', 1.0):.2f}")
+
+            st.markdown("#### 🎯 Volatility Bounds (Dynamic ATR Channels)")
+            v_b1, v_b2, v_b3 = st.columns(3)
+            v_b1.metric("1x ATR Move", f"±₹{dossier['atr']:.2f}")
+            v_b2.metric("Upper 1-ATR Target", f"₹{dossier['price'] + dossier['atr']:.2f}")
+            v_b3.metric("Lower 1-ATR Target", f"₹{dossier['price'] - dossier['atr']:.2f}")
+
+        with tab4:
+            st.markdown("#### 📈 Interactive Candlestick Chart & Overlays")
+            df_hist = dossier.get('df_history', pd.DataFrame())
+            if not df_hist.empty:
+                fig = go.Figure()
+                
+                fig.add_trace(go.Candlestick(
+                    x=df_hist.index,
+                    open=df_hist['Open'],
+                    high=df_hist['High'],
+                    low=df_hist['Low'],
+                    close=df_hist['Close'],
+                    name='Price Action'
+                ))
+                
+                if len(df_hist) >= 10:
+                    ema_line = df_hist['Close'].ewm(span=20, adjust=False).mean()
+                    fig.add_trace(go.Scatter(
+                        x=df_hist.index, y=ema_line,
+                        line=dict(color='#f59e0b', width=1.5),
+                        name='20 EMA'
+                    ))
+
+                # Target T1 Line
+                fig.add_hline(
+                    y=plan['target1'],
+                    line_dash="dash",
+                    line_color="#10b981",
+                    annotation_text=f"Target T1: ₹{plan['target1']:.2f}",
+                    annotation_position="top right"
+                )
+                
+                # Stop Loss Line
+                fig.add_hline(
+                    y=plan['stop_loss'],
+                    line_dash="dash",
+                    line_color="#ef4444",
+                    annotation_text=f"SL: ₹{plan['stop_loss']:.2f}",
+                    annotation_position="bottom right"
+                )
+
+                fig.update_layout(
+                    template="plotly_dark",
+                    height=460,
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    xaxis_rangeslider_visible=False,
+                    paper_bgcolor="#0b0e14",
+                    plot_bgcolor="#0b0e14"
+                )
                 st.plotly_chart(fig, use_container_width=True)
-                st.markdown("> **Note**: Green = Bullish Momentum | Red = Bearish Rotation.")
-            else:
-                st.info("Trending data pending research cycle.")
 
-        st.divider()
-        
-        st.divider()
-        
-        # Row 2: Controls
-        st.subheader("🔗 Content Automation")
-        c1, c2 = st.columns(2)
-        from stock_hub.logic_handler import generate_linkedin_content
-        with c1:
-            if st.button("🚀 Gen Market Insight Post"):
-                with st.spinner("Drafting Insight..."):
-                    st.session_state.post1 = generate_linkedin_content("market")
-        with c2:
-            if st.button("📚 Gen MF Educational Post"):
-                with st.spinner("Drafting Education..."):
-                    st.session_state.post2 = generate_linkedin_content("mf")
+        with tab5:
+            st.markdown("#### 🚀 Upstox Execution Gateway & Order Routing")
+            
+            u_col1, u_col2 = st.columns([2, 3])
+            with u_col1:
+                st.markdown("##### 💼 Position Sizing Calculator")
+                risk_cap = st.number_input("Account Risk Capital (₹):", min_value=5000, value=25000, step=5000)
+                recalc_plan = RiskExecutionArchitect.construct_trade_plan(dossier['direction'], dossier['price'], dossier['high'], dossier['low'], dossier['atr'], risk_cap)
+                st.info(f"Recommended Quantity: **{recalc_plan['recommended_qty']} Shares** | Risk per Share: **₹{recalc_plan['risk_per_share']:.2f}**")
+                
+                order_mode = st.radio("Order Routing Mode:", ["🛡️ Paper Trading (Simulation)", "⚡ Live Upstox Route"], horizontal=True)
+                is_sim = "Paper" in order_mode
 
-        # Row 3: Output (Wide Container for Mobile Compatibility)
-        if 'post1' in st.session_state or 'post2' in st.session_state:
-            st.divider()
-            st.subheader("📝 Strategic Content Window")
-            st.info("💡 **Mobile Tip**: Use the 📋 icon on the top-right of the boxes below to copy contents instantly.")
-            
-            # We use columns for side-by-side on desktop, which stacks on mobile
-            out_col1, out_col2 = st.columns(2)
-            
-            if 'post1' in st.session_state:
-                with out_col1:
-                    st.markdown("#### 🚀 Tactical Market Insight")
-                    with st.container(height=400, border=True):
-                        st.code(st.session_state.post1, language="markdown")
-                    st.caption("Optimized for Prime O-L Sentiment")
-            
-            if 'post2' in st.session_state:
-                with out_col2:
-                    st.markdown("#### 📚 Educational Series")
-                    with st.container(height=400, border=True):
-                        st.code(st.session_state.post2, language="markdown")
-                    st.caption("Optimized for Education Pivot")
+            with u_col2:
+                st.markdown("##### ⚡ Quick Order Ticket")
+                order_side = "BUY" if dossier['direction'] == "BULLISH" else "SELL"
+                if st.button(f"🚀 EXECUTE {order_side} ({recalc_plan['recommended_qty']} Shares @ ₹{dossier['price']:.2f})"):
+                    res = upstox.place_order(
+                        symbol=dossier['symbol'],
+                        quantity=recalc_plan['recommended_qty'],
+                        transaction_type=order_side,
+                        price=dossier['price'],
+                        simulated=is_sim
+                    )
+                    if res.get("status") == "SUCCESS":
+                        st.success(f"✅ Order Executed: {res['message']} (ID: {res['order_id']})")
+                    else:
+                        st.error(f"❌ Order Failed: {res.get('message')}")
+
+    else:
+        st.error(f"Error compiling Kratos dossier for {selected_ticker}: {dossier.get('message', 'Unknown Error')}")
 
 if __name__ == "__main__":
     main()

@@ -1,7 +1,24 @@
-streamlit
-pandas
-yfinance
-google-generativeai
-python-dotenv
-plotly
-google-auth
+# =============================================================================
+# 🧬 BROTHERHOOD QUANT TERMINAL & KRATOS AI PRODUCTION DEPENDENCIES
+# =============================================================================
+
+# Core Dashboard & UI
+streamlit>=1.40.0
+plotly>=5.20.0
+
+# Mathematical & Quantitative Computing
+numpy>=1.26.0
+pandas>=2.2.0
+scipy>=1.13.0
+
+# Deep Learning & NLP (Local FinBERT Sentiment Engine)
+torch>=2.2.0
+transformers>=4.40.0
+
+# Market Data Ingestion & Gateway
+yfinance>=0.2.50
+requests>=2.31.0
+
+# Environment & AI Orchestration
+python-dotenv>=1.0.0
+google-generativeai>=0.8.0
